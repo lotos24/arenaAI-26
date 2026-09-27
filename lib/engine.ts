@@ -72,7 +72,8 @@ export function outcome(config: Config, turns: Turn[], requiredTurns = SESSION_S
  const raw = turns.slice(0,count).reduce((sum,turn)=>sum+turn.points,0);
  const score = Math.max(0,Math.min(100,Math.round(raw/maximum*100)));
  const trust = Math.max(0, Math.min(100,50+turns.reduce((s,t)=>s+t.trust,0)));
- return {score,trust,won:turns.length===count && score>=threshold(config) && trust>=40};
+ const collapsed=tension(config,turns)>=100;
+ return {score,trust,collapsed,won:!collapsed&&turns.length===count&&score>=threshold(config)&&trust>=40};
 }
 
 /** Emotional pressure is distinct from trust: concessions do not resolve uncertainty. */

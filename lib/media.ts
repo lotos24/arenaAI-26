@@ -1,6 +1,8 @@
 export type ArenaSound = 'navigate' | 'send' | 'response' | 'warning' | 'success';
 
 let audioContext: AudioContext | null = null;
+let tensionClock: ReturnType<typeof setInterval> | null = null;
+let voiceRequest = 0;
 
 function context() {
   if (typeof window === 'undefined') return null;
@@ -40,18 +42,37 @@ export function playArenaSound(kind: ArenaSound, enabled = true) {
 
 export function speakOpponent(text: string) {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return false;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = 'ru-RU';
-  utterance.rate = .94;
-  utterance.pitch = .96;
-  const voice = window.speechSynthesis.getVoices().find(item => item.lang.toLowerCase().startsWith('ru'));
-  if (voice) utterance.voice = voice;
-  window.speechSynthesis.speak(utterance);
+  const synth=window.speechSynthesis;const request=++voiceRequest;synth.cancel();
+  const play=()=>{
+    if(request!==voiceRequest)return;
+    const utterance=new SpeechSynthesisUtterance(text);utterance.lang='ru-RU';utterance.rate=.96;utterance.pitch=1.04;
+    const russian=synth.getVoices().filter(item=>item.lang.toLowerCase().startsWith('ru'));
+    const voice=russian.find(item=>/алиса|alisa|alice|ал[её]на|alena|yandex/i.test(item.name))
+      ?? russian.find(item=>/milena|ирина|irina|female|жен/i.test(item.name))
+      ?? russian[0];
+    if(voice)utterance.voice=voice;synth.speak(utterance);
+  };
+  if(synth.getVoices().length)play();else{let played=false;const ready=()=>{if(played)return;played=true;synth.removeEventListener('voiceschanged',ready);play()};synth.addEventListener('voiceschanged',ready);setTimeout(ready,350)}
   return true;
 }
 
+function tick(volume=.025) {
+  const audio=context();if(!audio)return;
+  const start=audio.currentTime;const oscillator=audio.createOscillator();const gain=audio.createGain();
+  oscillator.type='square';oscillator.frequency.setValueAtTime(1040,start);
+  gain.gain.setValueAtTime(.0001,start);gain.gain.exponentialRampToValueAtTime(volume,start+.004);gain.gain.exponentialRampToValueAtTime(.0001,start+.035);
+  oscillator.connect(gain).connect(audio.destination);oscillator.start(start);oscillator.stop(start+.045);
+}
+
+export function startTensionClock(value:number,enabled=true) {
+  stopTensionClock();if(!enabled||value<55)return()=>{};
+  const delay=value>=85?430:value>=70?650:900;tick(value>=85?.035:.022);tensionClock=setInterval(()=>tick(value>=85?.035:.022),delay);
+  return stopTensionClock;
+}
+export function stopTensionClock(){if(tensionClock){clearInterval(tensionClock);tensionClock=null;}}
+
 export function stopOpponentVoice() {
+  voiceRequest++;
   if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel();
 }
 

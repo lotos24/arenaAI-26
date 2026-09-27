@@ -102,3 +102,12 @@ test('tension labels switch at the visible warning thresholds', () => {
  assert.equal(tensionState(70).level, 'high');
  assert.equal(tensionState(100).level, 'high');
 });
+
+test('a negotiation collapses at 100 percent tension even with enough points', () => {
+ const config:Config={...defaults.supplier,tone:'Жёсткий',difficulty:'Эксперт'};
+ const turns=[turn('supplier',0,1),turn('supplier',1,2)];
+ const result=outcome(config,turns,2);
+ assert.equal(tension(config,turns),100);
+ assert.equal(result.collapsed,true);
+ assert.equal(result.won,false);
+});

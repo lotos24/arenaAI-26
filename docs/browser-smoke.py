@@ -18,6 +18,11 @@ def click(selector):
     element=req(p+'/element',{'using':'css selector','value':selector})
     req(p+'/element/'+element['element-6066-11e4-a52e-4f735466cecf']+'/click',{})
     time.sleep(.85)
+def fill(selector,value):
+    element=req(p+'/element',{'using':'css selector','value':selector})
+    eid=element['element-6066-11e4-a52e-4f735466cecf']
+    req(p+'/element/'+eid+'/clear',{})
+    req(p+'/element/'+eid+'/value',{'text':value})
 def button(text):
     selector=js('const b=[...document.querySelectorAll("button")].find(x=>x.textContent.trim()==='+json.dumps(text)+');if(!b)return null;b.dataset.testClick="yes";return "[data-test-click=yes]"')
     assert selector,text
@@ -44,13 +49,17 @@ try:
         size(320,568);fits('.welcome-controls, .chapter')
         assert js('return document.querySelector(".chapter").scrollHeight<=document.querySelector(".chapter").clientHeight+1'),'legend content clipping'
         size(390,844)
-    has('В настройках доступны');button('Войти в арену');has('Любой разговор')
+    has('В настройках доступны');button('Войти в арену');has('Карта переговоров')
+    assert js('return document.querySelector(".app-root").classList.contains("theme-dark")'),'dark theme must be default'
+    assert js("return !!document.querySelector('link[rel~=\"icon\"]')"),'favicon missing'
     for w,h in [(1440,900),(1366,768),(390,844),(375,667),(320,568)]:
-        size(w,h);fits('.scenario-card, .custom-banner, .nav-item')
-        assert js('return [...document.querySelectorAll(".scenario-card")].every(e=>e.scrollHeight<=e.clientHeight+1)'),('card clipping',w,h)
+        size(w,h);fits('.negotiation-map, .custom-banner, .nav-item')
+        assert js('return document.querySelector(".negotiation-map").scrollHeight>=document.querySelector(".negotiation-map").clientHeight'),('map missing',w,h)
         if w==390:snap('menu-mobile')
     size(1440,900);snap('menu-desktop')
-    click('.scenario-card.supplier');button('Начать переговоры');has('Напряжённость')
+    assert js('return document.querySelectorAll(".map-level").length')==8
+    assert js('return document.querySelectorAll(".map-level.unlocked").length')==1
+    click('.map-level.unlocked');button('Начать переговоры');has('Напряжённость')
     assert js('return !!document.querySelector("[aria-label=\\"Начать голосовой ввод\\"]")')
     assert js('return !!document.querySelector("[aria-label=\\"Озвучить первую реплику\\"]")')
     initial=int(js('return document.querySelector(".negotiation").dataset.tension'))
@@ -62,18 +71,17 @@ try:
     size(390,844);snap('dialog-mobile')
     click('.options button:nth-child(2)')
     assert int(js('return document.querySelector(".negotiation").dataset.tension'))>initial
-    click('.options button:nth-child(3)');has('На грани срыва');assert js('return !!document.querySelector(".tension-high")')
+    click('.options button:nth-child(3)');click('.options button:nth-child(3)');has('На грани срыва');assert js('return !!document.querySelector(".tension-high")')
     size(1440,900);snap('tension-desktop')
-    for _ in range(4):click('.options button:nth-child(3)')
-    button('Посмотреть разбор');has('Каждая попытка делает вас сильнее.')
+    click('.options button:nth-child(3)');time.sleep(1.4);has('Переговоры сорваны.')
     for w,h in [(1366,768),(390,844),(375,667)]:
         size(w,h);fits('.review-tabs, .result-footer, .result-metrics')
     click('.review-tabs button:nth-child(4)');has('Это моё последнее предложение')
     button('Попробовать иначе')
     for _ in range(6):click('.options button:first-child')
     button('Посмотреть разбор');has('Общий язык найден.');size(390,844);snap('results-mobile')
-    button('Прогресс');has('Цена долгосрочного контракта')
-    req(p+'/refresh',{});time.sleep(1);has('Общий язык найден.');button('Прогресс');has('Цена долгосрочного контракта')
+    button('Прогресс');has('Повышение до ведущего специалиста');has('Стажёр переговорщик')
+    req(p+'/refresh',{});time.sleep(1);has('Общий язык найден.');button('Прогресс');has('Повышение до ведущего специалиста')
     button('Конструктор');fits('.form-footer');button('Протестировать');button('Начать переговоры')
     click('.session-controls .icon-button');has('ВАША ЗАДАЧА');button('Вернуться к разговору')
     draft='Понимаю ваши интересы. Давайте найдём решение вместе.'
@@ -95,11 +103,24 @@ try:
     button('Посмотреть разбор');has('Общий язык найден.')
     size(390,844)
     button('Настройки');has('Получить API-ключ')
+    assert js('return [...document.querySelectorAll(".setting-card")].every(e=>e.scrollWidth<=e.clientWidth+1)'), 'settings text overflow'
+    assert js('return getComputedStyle(document.querySelector("select")).appearance==="none"'), 'select styling missing'
     assert js('return document.querySelector(".api-actions a").href')=='https://platform.openai.com/api-keys'
     assert js('return document.querySelector("[aria-label=\\"API-ключ OpenAI\\"]").type')=='password'
+    assert js('return document.querySelector(".app-root").classList.contains("theme-dark")')
+    click('[aria-label="Тёмная тема"]');assert not js('return document.querySelector(".app-root").classList.contains("theme-dark")')
     click('[aria-label="Тёмная тема"]');assert js('return document.querySelector(".app-root").classList.contains("theme-dark")');assert js('return getComputedStyle(document.querySelector(".app-root")).backgroundColor')=='rgb(16, 23, 19)'
     click('[aria-label="Спокойный режим"]');assert js('return document.querySelector("[aria-label=\\"Спокойный режим\\"]").getAttribute("aria-checked")')=='true'
     req(p+'/refresh',{});time.sleep(1);button('Настройки');assert js('return document.querySelector(".app-root").classList.contains("theme-dark")');assert js('return document.querySelector("[aria-label=\\"Спокойный режим\\"]").getAttribute("aria-checked")')=='true'
+    has('Звук и голос Алисы')
+    fill('.teacher-login-form label:first-child input','Анна Сергеевна')
+    fill('.teacher-login-form label:last-of-type input','2468')
+    button('Создать аккаунт');has('Открыть кабинет');button('Открыть кабинет');has('Результаты группы')
+    assert js('return document.querySelectorAll(".nav-item").length')==5
+    report={'version':1,'id':'test-report','learner':'Иван Петров','classCode':'TEST-7','generatedAt':1700000000000,'sessions':[{'id':'student-1','topic':'Пробная сделка','difficulty':'Базовый','score':84,'trust':73,'tension':31,'won':True,'ended':1700000000000}]}
+    report_code=base64.urlsafe_b64encode(json.dumps(report,ensure_ascii=False).encode()).decode().rstrip('=')
+    fill('[aria-label="Код отчёта ученика"]',report_code);button('Импортировать');has('Иван Петров');has('Пробная сделка')
+    button('Настройки')
     button('Посмотреть');has('За каждой позицией — человек.');button('Пропустить знакомство');has('Настройки арены.')
     size(1440,900);snap('settings-desktop')
     # System reduced motion must disable CSS animation too.
@@ -108,5 +129,5 @@ try:
     button('Посмотреть');assert js('return getComputedStyle(document.querySelector(".welcome-core")).animationName')=='none'
     errors=[x for x in req(p+'/log',{'type':'browser'}) if x['level']=='SEVERE' and 'favicon' not in x['message']]
     assert not errors,errors
-    print('PASS: legend, 5 viewport sizes, no page overflow or hidden controls, six-stage scenarios, tension escalation, losing/winning paths, review tabs, persistence, constructor, mission modal, voice controls, dark theme, API link, quiet mode, replay, reduced motion, clean console')
+    print('PASS: legend, favicon, dark default, map and ranks, 5 viewport sizes, no page overflow, six-stage scenarios, deal collapse at 100% tension, losing/winning paths, XP, persistence, constructor, voice controls, API link, teacher login and report import, settings, replay, reduced motion, clean console')
 finally:req(p,method='DELETE')
