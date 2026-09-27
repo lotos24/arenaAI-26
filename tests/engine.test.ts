@@ -3,7 +3,26 @@ import assert from 'node:assert/strict';
 import {choices,defaults,evaluateText,outcome,respond,threshold,tension,tensionState,Domain,Config,Turn,stages} from '../lib/engine';
 for(const domain of ['supplier','career'] as Domain[]) test(`${domain}: cooperative and hostile paths diverge`,()=>{const config=defaults[domain];const good=stages.map((_,i)=>({...choices(domain,i)[0],reply:''}));assert.equal(outcome(config,good).won,true);assert.equal(outcome(config,good).score,100);const bad=stages.map((_,i)=>({...choices(domain,i)[i===0?1:2],reply:''}));assert.equal(outcome(config,bad).won,false);assert.ok(outcome(config,good).trust>outcome(config,bad).trust);assert.equal(outcome(config,good.slice(0,-1)).won,false);});
 test('configuration affects success threshold and replies',()=>{assert.ok(threshold({...defaults.supplier,difficulty:'Эксперт'})>threshold({...defaults.supplier,difficulty:'Базовый'}));const c=choices('supplier',2)[0];const config={...defaults.supplier,goal:'Снизить риски',tone:'Жёсткий' as const};assert.match(respond(config,2,c,70),/Перейдём к делу/);assert.match(respond(config,2,c,70),/снизить риски/);assert.match(respond(config,2,c,10),/остановим/)});
-test('free text checks the current stage, threats, and a neutral fallback',()=>{assert.equal(evaluateText('Предлагаю контракт на год и объём в обмен на рост цены 5%.','supplier',3).skill,'Взаимный обмен');assert.ok(evaluateText('Вы обязаны принять наши условия, иначе мы уйдём.','supplier',0).points<=3);assert.equal(evaluateText('Просто некоторый текст без конкретного приёма','career',4).points,9)});
+test('free text distinguishes proposals, threats, insults, and vague replies',()=>{
+ const proposal=evaluateText('Предлагаю контракт на год и объём в обмен на рост цены 5%.','supplier',3);
+ const threat=evaluateText('Вы обязаны принять наши условия, иначе мы уйдём.','supplier',0);
+ const insult=evaluateText('Иди нахуй, хуесос.','career',2);
+ const vague=evaluateText('Просто некоторый текст без конкретного приёма','career',4);
+ assert.equal(proposal.skill,'Взаимный обмен');
+ assert.equal(threat.intent,'threat');
+ assert.equal(insult.intent,'insult');
+ assert.ok((insult.tension??0)>(vague.tension??0));
+ assert.equal(vague.intent,'vague');
+});
+
+test('one insult immediately heats the deal and a repeated insult breaks it',()=>{
+ const config=defaults.career;
+ const first={...evaluateText('Ты идиот, разговор окончен.','career',0),reply:''};
+ const second={...evaluateText('Иди нахуй.','career',1),reply:''};
+ assert.ok(tension(config,[first])>=70);
+ assert.equal(tension(config,[first,second]),100);
+ assert.equal(outcome(config,[first,second],2).collapsed,true);
+});
 
 const turn = (domain: Domain, stage: number, option: number): Turn => ({
  ...choices(domain, stage)[option], reply: ''

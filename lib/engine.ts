@@ -1,7 +1,8 @@
 export type Domain = 'supplier' | 'career';
 export type Config = { domain: Domain; topic: string; difficulty: 'Базовый' | 'Продвинутый' | 'Эксперт'; tone: 'Сдержанный' | 'Дружелюбный' | 'Жёсткий'; role: string; goal: string };
-export type Choice = { text: string; skill: string; points: number; trust: number; feedback: string };
-export type Turn = { text: string; reply: string; skill: string; points: number; trust: number; feedback: string };
+export type NegotiationIntent = 'scripted' | 'insult' | 'threat' | 'vague' | 'demand' | 'question' | 'proposal' | 'repair' | 'commitment';
+export type Choice = { text: string; skill: string; points: number; trust: number; feedback: string; tension?: number; intent?: NegotiationIntent };
+export type Turn = Choice & { reply: string };
 export const defaults: Record<Domain, Config> = {
  supplier: { domain: 'supplier', topic: 'Цена долгосрочного контракта', difficulty: 'Продвинутый', tone: 'Сдержанный', role: 'Директор по продажам', goal: 'Сохранить маржу и получить гарантированный объём' },
  career: { domain: 'career', topic: 'Повышение и новая зона ответственности', difficulty: 'Базовый', tone: 'Дружелюбный', role: 'Руководитель команды', goal: 'Удержать сотрудника в рамках бюджета отдела' }
@@ -32,8 +33,30 @@ export function choices(domain: Domain, stage: number): Choice[] {
  ][Math.min(stage, SESSION_STAGE_COUNT - 1)];
 }
 export function evaluateText(text: string, domain: Domain, stage: number): Choice {
- const t = text.toLowerCase();
- if (/иначе|ультиматум|не касаются|обязаны|последнее предложение|только согласие/.test(t)) return {...choices(domain,2)[2],text};
+ const clean = text.trim();
+ const t = clean.toLowerCase().replace(/ё/g,'е');
+ const make = (skill:string,points:number,trust:number,feedback:string,tensionDelta:number,intent:NegotiationIntent):Choice => ({text:clean,skill,points,trust,feedback,tension:tensionDelta,intent});
+ if (/(?:на\s*хуй|нахуй|хуесос|хуй|хуйн|еба|ебан|ебл|пизд|мудак|дебил|идиот|туп(?:ой|ая|ые)|ублюд|мраз|говн|заткнись|пош[её]л|придур|урод|лох)/i.test(clean)) {
+  return make('Оскорбление',0,-32,'Оскорбление мгновенно разрушает рабочий контакт. Остановитесь, признайте срыв и верните разговор к предметным условиям.',50,'insult');
+ }
+ if (/(извин|прошу прощ|сорвался|был неправ|вернемся к конструктив|давайте начнем заново)/.test(t)) {
+  return make('Восстановление контакта',12,7,'Вы признали сбой и предложили вернуться к делу. После конфликта добавьте конкретный спокойный вопрос.',-10,'repair');
+ }
+ if (/(иначе|ультиматум|обязаны|последнее предложение|только согласие|не будете|мы уйдем|я уйду|никаких обсуждений)/.test(t)) {
+  return make('Ультиматум',2,-23,'Угроза заставляет собеседника защищаться и резко приближает срыв сделки.',34,'threat');
+ }
+ const hasQuestion=/\?|\b(какие|какой|почему|что|как|когда|сколько|расскаж|поможет|важно ли)\b/.test(t);
+ const hasProposal=/(предлага|готов(?:ы)?|можем|давайте|соглас(?:ен|ны)|фиксир|обязуем|берем на себя)/.test(t);
+ const hasConcrete=/(\d|%|руб|цен|срок|дат|объем|контракт|оплат|бюджет|зарплат|kpi|кпи|роль|гарант|пилот|ресурс|ответствен|квартал|месяц|недел|дн(?:я|ей)|в обмен)/.test(t);
+ const hasSharedValue=/(вместе|обеих сторон|взаим|в обмен|встречн|сотруднич|команд|интерес)/.test(t);
+ const isDemand=/(требую|дайте|снижайте|повышайте|мне нужно|мне нужен|вы должны|согласитесь|принимайте)/.test(t);
+ const words=clean.split(/\s+/).filter(Boolean).length;
+ if ((words<7&&!hasQuestion&&!hasConcrete) || /^(ладно|хорошо|не знаю|решайте|думайте|просто сделайте|ну и что)[.! ]*$/.test(t)) {
+  return make('Без конкретики',5,-5,'Собеседнику не за что зацепиться: нет вопроса, условия или следующего шага. Напряжённость растёт из-за неопределённости.',14,'vague');
+ }
+ if (isDemand&&!hasSharedValue&&!hasQuestion) {
+  return make('Одностороннее требование',5,-10,'Требование обозначает вашу позицию, но не даёт собеседнику встречной ценности или выбора.',19,'demand');
+ }
  const patterns = [
   /понима|сотруднич|команд|вместе|спасибо/,
   /правильно понимаю|позици|ограничен|рамк|приемлем/,
@@ -42,11 +65,23 @@ export function evaluateText(text: string, domain: Domain, stage: number): Choic
   /риск|сомнен|критери|коридор|пилот|пересмотр/,
   /зафикс|письмен|пятниц|дат|отправ|срок|итог/,
  ];
- if (patterns[stage].test(t) && text.trim().length >= 35) return {...choices(domain,stage)[0],text,feedback:'В реплике обнаружены признаки приёма «'+choices(domain,stage)[0].skill+'». '+choices(domain,stage)[0].feedback};
- return choice(text,'Уточнение',9,1,'Реплика принята. Усильте её конкретным вопросом, аргументом или следующим шагом. Оценка свободного текста основана на правилах, а не на понимании смысла моделью.');
+ if (patterns[Math.min(stage,patterns.length-1)].test(t) && clean.length >= 35) {
+  const ideal=choices(domain,stage)[0];
+  const intent:NegotiationIntent=stage===2?'question':stage===3?'proposal':stage===5?'commitment':'scripted';
+  return {...ideal,text:clean,intent,feedback:'В реплике обнаружены признаки приёма «'+ideal.skill+'». '+ideal.feedback};
+ }
+ if (hasProposal&&hasConcrete) return make('Конкретное предложение',15,7,'Есть проверяемое условие и следующий шаг. Усильте предложение встречной ценностью для второй стороны.',-6,'proposal');
+ if (hasQuestion) return make('Открытый вопрос',12,5,'Вопрос помогает раскрыть ограничения. Следующим ходом соберите услышанное в конкретный обмен.',-3,'question');
+ if (hasProposal) return make('Предложение без условий',8,0,'Направление обозначено, но не хватает цифр, срока или встречного обязательства.',7,'vague');
+ return make('Без конкретики',6,-3,'Реплика не содержит ясного вопроса, условия или следующего шага, поэтому неопределённость усиливает напряжение.',11,'vague');
 }
 export function threshold(config: Config) { return { 'Базовый': 52, 'Продвинутый': 65, 'Эксперт': 78 }[config.difficulty]; }
 export function respond(config: Config, stage: number, c: Choice, trust: number): string {
+ if(c.intent==='insult') return 'Я не готов продолжать разговор в таком тоне. Если вы хотите сохранить возможность сделки, остановимся и вернёмся к уважительному обсуждению конкретных условий.';
+ if(c.intent==='threat') return 'Ультиматум не даёт мне оснований двигаться навстречу. Либо обсудим ограничения и встречные обязательства, либо придётся поставить переговоры на паузу.';
+ if(c.intent==='vague') return config.domain==='supplier'?'Пока я не услышал конкретного предложения. Назовите цену, объём, срок и то, что вы готовы гарантировать со своей стороны.':'Пока неясно, что именно вы предлагаете. Сформулируйте роль, измеримый результат и срок, после которого мы проверим договорённость.';
+ if(c.intent==='demand') return 'Я услышал вашу позицию, но одностороннее требование не решает моих ограничений. Что вы предлагаете взамен и какой риск готовы взять на себя?';
+ if(c.intent==='repair') return 'Спасибо, что остановились и вернули разговор в рабочее русло. Я готов продолжить, если дальше мы будем обсуждать конкретные условия и интересы обеих сторон.';
  const prefix = config.tone === 'Жёсткий' ? 'Перейдём к делу. ' : config.tone === 'Дружелюбный' ? 'Спасибо за открытый разговор. ' : '';
  if (trust < 25) return prefix+'В таком тоне договориться сложно. Мне нужны конструктивные условия, иначе остановим обсуждение.';
  const lines = config.domain === 'supplier' ? [
@@ -81,7 +116,7 @@ export function tension(config: Config, turns: Turn[]) {
  const baseline = {Дружелюбный: 24, Сдержанный: 36, Жёсткий: 48}[config.tone]
    + {Базовый: 0, Продвинутый: 5, Эксперт: 10}[config.difficulty];
  return turns.reduce((value, turn) => {
-   const delta = turn.trust < 0 ? Math.ceil(Math.abs(turn.trust) * 1.4)
+   const delta = typeof turn.tension==='number' ? turn.tension : turn.trust < 0 ? Math.ceil(Math.abs(turn.trust) * 1.4)
      : turn.points >= 19 ? -14 : turn.points >= 12 ? -5 : 5;
    return Math.max(5, Math.min(100, value + delta));
  }, baseline);

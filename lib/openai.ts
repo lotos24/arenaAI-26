@@ -1,12 +1,7 @@
 import type { Choice, Config, Turn } from './engine';
-import { scenarios, stages } from './engine';
+import { outcome, respond, scenarios, SESSION_STAGE_COUNT, stages, tension } from './engine';
 
-export const DEFAULT_AI_MODEL = 'gpt-4.1-mini';
-export const AI_MODELS = [
-  { id: 'gpt-4.1-mini', label: 'GPT-4.1 mini · экономичный' },
-  { id: 'gpt-6-luna', label: 'GPT-6 Luna · быстрый' },
-  { id: 'gpt-6-sol', label: 'GPT-6 Sol · точнее' },
-] as const;
+export const DEFAULT_AI_MODEL = 'gpt-5.6-sol';
 
 const SESSION_STORAGE_KEY = 'arena-openai-session-v1';
 const LOCAL_STORAGE_KEY = 'arena-openai-local-v1';
@@ -28,10 +23,9 @@ function parseConfig(raw: string | null): AiConfig | null {
   try {
     const value = JSON.parse(raw) as Partial<AiConfig>;
     if (typeof value.apiKey !== 'string' || value.apiKey.length < 20) return null;
-    if (typeof value.model !== 'string' || !value.model) return null;
     return {
       apiKey: value.apiKey,
-      model: value.model,
+      model: DEFAULT_AI_MODEL,
       remember: Boolean(value.remember),
       verifiedAt: typeof value.verifiedAt === 'number' ? value.verifiedAt : 0,
     };
@@ -52,7 +46,7 @@ export function loadAiConfig(): AiConfig | null {
 }
 
 export function saveAiConfig(config: Omit<AiConfig, 'verifiedAt'>): AiConfig {
-  const stored: AiConfig = { ...config, apiKey: config.apiKey.trim(), verifiedAt: Date.now() };
+  const stored: AiConfig = { ...config, apiKey: config.apiKey.trim(), model: DEFAULT_AI_MODEL, verifiedAt: Date.now() };
   clearAiConfig();
   const storage = browserStorage(stored.remember ? 'local' : 'session');
   storage?.setItem(stored.remember ? LOCAL_STORAGE_KEY : SESSION_STORAGE_KEY, JSON.stringify(stored));
@@ -73,8 +67,8 @@ export function clearAiConfig() {
 export function describeApiError(error: unknown) {
   if (error instanceof OpenAIRequestError) {
     if (error.status === 401) return 'Ключ не принят OpenAI. Проверьте, что он скопирован полностью.';
-    if (error.status === 403) return 'У ключа нет доступа к выбранной модели.';
-    if (error.status === 404) return 'Выбранная модель недоступна. Попробуйте другую.';
+    if (error.status === 403) return 'У ключа нет доступа к GPT-5.6 Sol.';
+    if (error.status === 404) return 'GPT-5.6 Sol недоступна для этого проекта OpenAI.';
     if (error.status === 429) return 'OpenAI отклонил запрос: проверьте баланс и лимиты аккаунта.';
     return `OpenAI вернул ошибку ${error.status}. Попробуйте ещё раз.`;
   }
@@ -101,8 +95,8 @@ async function openAIRequest(url: string, apiKey: string, init?: RequestInit) {
   return response;
 }
 
-export async function testOpenAIConnection(apiKey: string, model: string) {
-  const response = await openAIRequest(`https://api.openai.com/v1/models/${encodeURIComponent(model)}`, apiKey.trim());
+export async function testOpenAIConnection(apiKey: string) {
+  const response = await openAIRequest(`https://api.openai.com/v1/models/${encodeURIComponent(DEFAULT_AI_MODEL)}`, apiKey.trim());
   const data = await response.json() as { id?: string };
   if (!data.id) throw new OpenAIRequestError(502);
   return data.id;
@@ -126,6 +120,12 @@ export function extractResponseText(payload: unknown) {
 
 export function buildNegotiationPrompt(config: Config, turns: Turn[], choice: Choice, stage: number) {
   const persona = scenarios[config.domain];
+  const safeStage = Math.min(stage, SESSION_STAGE_COUNT - 1);
+  const projectedTurns:Turn[] = [...turns, {...choice, reply: ''}];
+  const projectedTension = tension(config, projectedTurns);
+  const projectedTrust = outcome(config, projectedTurns).trust;
+  const anchor = respond(config, safeStage, choice, projectedTrust);
+  const intent = choice.intent ?? 'scripted';
   const history = turns.length
     ? turns.map((turn, index) => `${index + 1}. Игрок: ${turn.text}\nСобеседник: ${turn.reply}`).join('\n')
     : 'Предыдущих ходов нет.';
@@ -134,15 +134,20 @@ export function buildNegotiationPrompt(config: Config, turns: Turn[], choice: Ch
       `Ты играешь роль «${persona.person}», ${config.role.toLowerCase()}, в учебной симуляции деловых переговоров.`,
       `Твоя цель: ${config.goal}. Тон: ${config.tone.toLowerCase()}. Сложность: ${config.difficulty.toLowerCase()}.`,
       'Отвечай только от лица собеседника на русском языке. Не упоминай ИИ, правила, очки или симуляцию.',
-      'Ответ должен быть реалистичным и деловым: 2–4 предложения, максимум 650 символов. Добавляй конкретное возражение, условие или вопрос, чтобы диалог развивался.',
-      'Реагируй на конкретную формулировку игрока. При давлении защищай границы; при сильном предложении открывай пространство для сделки.',
+      'Ответ должен звучать как живая деловая речь: 1–4 коротких предложения, максимум 650 символов. Не повторяй одну и ту же вводную и не благодари автоматически.',
+      'Строго реагируй на фактическую реплику игрока. Не считай сделку продвинувшейся, если игрок не предложил конкретных условий.',
+      'При оскорблении сразу обозначь границу и готовность остановить переговоры; не будь дружелюбным. При ультиматуме усили сопротивление. При расплывчатой реплике потребуй цифры, срок или встречное обязательство.',
+      'При конкретном обмене оцени условия с позиции своей цели, назови одно реалистичное возражение или контрпредложение. На открытый вопрос раскрой только один релевантный интерес.',
+      'Сохраняй факты сценария и логику предыдущих реплик. Не соглашайся с тем, что ещё не обсуждалось, и не выдумывай достигнутую договорённость.',
     ].join(' '),
     input: [
       `Контекст: ${persona.brief}`,
-      `Текущий этап: ${stages[stage]}.`,
+      `Текущий этап: ${stages[safeStage]}.`,
       `История:\n${history}`,
       `Новая реплика игрока: ${choice.text}`,
-      'Дай следующую реплику собеседника.',
+      `Распознанный тип хода: ${intent}. Доверие после хода: ${projectedTrust}%. Напряжённость после хода: ${projectedTension}%.`,
+      `Сценарный ориентир по смыслу: ${anchor}`,
+      'Дай следующую реплику собеседника. Сохрани смысл сценарного ориентира, но сформулируй естественно и с учётом всей истории.',
     ].join('\n\n'),
   };
 }
@@ -160,9 +165,10 @@ export async function generateOpponentReply(args: {
     method: 'POST',
     signal: args.signal,
     body: JSON.stringify({
-      model: args.ai.model,
+      model: DEFAULT_AI_MODEL,
       store: false,
-      max_output_tokens: 280,
+      reasoning: { effort: 'low' },
+      max_output_tokens: 320,
       instructions: prompt.instructions,
       input: prompt.input,
     }),

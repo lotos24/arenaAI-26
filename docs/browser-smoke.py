@@ -18,6 +18,14 @@ def click(selector):
     element=req(p+'/element',{'using':'css selector','value':selector})
     req(p+'/element/'+element['element-6066-11e4-a52e-4f735466cecf']+'/click',{})
     time.sleep(.85)
+def click_js(selector):
+    clicked=False
+    for _ in range(25):
+        clicked=js('const e=[...document.querySelectorAll('+json.dumps(selector)+')].find(x=>!x.disabled&&x.getClientRects().length);if(!e)return false;e.click();return true')
+        if clicked:break
+        time.sleep(.1)
+    assert clicked,selector
+    time.sleep(1.65)
 def fill(selector,value):
     element=req(p+'/element',{'using':'css selector','value':selector})
     eid=element['element-6066-11e4-a52e-4f735466cecf']
@@ -69,20 +77,24 @@ try:
         assert float(js('return parseFloat(getComputedStyle(document.querySelector(".message")).fontSize)'))>=12,('small dialogue text',w,h)
         assert js('return document.querySelector(".conversation").scrollHeight <= document.querySelector(".conversation").clientHeight+1'),('conversation clipping',w,h)
     size(390,844);snap('dialog-mobile')
-    click('.options button:nth-child(2)')
+    js('document.querySelector(".options button:nth-child(2)").click()');time.sleep(.08)
+    assert js('return !!document.querySelector(".thinking-message")&&!!document.querySelector(".pending-exchange .yours")'),'sent reply must appear before opponent response'
+    time.sleep(1)
     assert int(js('return document.querySelector(".negotiation").dataset.tension'))>initial
-    click('.options button:nth-child(3)');click('.options button:nth-child(3)');has('На грани срыва');assert js('return !!document.querySelector(".tension-high")')
+    click_js('.options button:nth-child(3)');click_js('.options button:nth-child(3)');has('На грани срыва');assert js('return !!document.querySelector(".tension-high")')
     size(1440,900);snap('tension-desktop')
-    click('.options button:nth-child(3)');time.sleep(1.4);has('Переговоры сорваны.')
+    click_js('.options button:nth-child(3)');time.sleep(2.1)
+    collapse_state=js('return {text:document.body.innerText.slice(0,1200),tension:document.querySelector(".negotiation")?.dataset.tension,pending:!!document.querySelector(".thinking-message"),turns:document.querySelectorAll(".exchange:not(.pending-exchange)").length}')
+    assert 'Переговоры сорваны.' in collapse_state['text'],collapse_state
     for w,h in [(1366,768),(390,844),(375,667)]:
         size(w,h);fits('.review-tabs, .result-footer, .result-metrics')
     click('.review-tabs button:nth-child(4)');has('Это моё последнее предложение')
     button('Попробовать иначе')
-    for _ in range(6):click('.options button:first-child')
+    for _ in range(6):click_js('.options button:first-child')
     button('Посмотреть разбор');has('Общий язык найден.');size(390,844);snap('results-mobile')
     button('Прогресс');has('Повышение до ведущего специалиста');has('Стажёр переговорщик')
     req(p+'/refresh',{});time.sleep(1);has('Общий язык найден.');button('Прогресс');has('Повышение до ведущего специалиста')
-    button('Конструктор');fits('.form-footer');button('Протестировать');button('Начать переговоры')
+    button('Конструктор');fits('.form-footer');assert js('return !!document.querySelector(".custom-select-trigger")'),'custom select missing';button('Протестировать');button('Начать переговоры')
     click('.session-controls .icon-button');has('ВАША ЗАДАЧА');button('Вернуться к разговору')
     draft='Понимаю ваши интересы. Давайте найдём решение вместе.'
     field=req(p+'/element',{'using':'css selector','value':'.input-row input'})
@@ -93,26 +105,26 @@ try:
     click('.modal .close');button('Арена');assert js('return document.querySelector(".input-row input").value')==draft,'history retry replaced active session'
     click('.send-button');assert js('return document.querySelector(".input-row input").value')=='','draft not cleared'
     button('Конструктор')
-    js('const e=document.querySelector("select");e.value="career";e.dispatchEvent(new Event("change",{bubbles:true}))')
+    click('[aria-label="Сфера переговоров"]');click('[role="option"][data-value="career"]')
     button('Протестировать');button('Начать переговоры')
     for stage in range(6):
         for w,h in [(1366,768),(390,844),(375,667),(320,568)]:
             size(w,h);fits('.options button, .input-row')
             assert js('return document.querySelector(".conversation").scrollHeight<=document.querySelector(".conversation").clientHeight+1'),('career clipping',stage,w,h)
-        click('.options button:first-child')
+        click_js('.options button:first-child')
     button('Посмотреть разбор');has('Общий язык найден.')
     size(390,844)
     button('Настройки');has('Получить API-ключ')
     assert js('return [...document.querySelectorAll(".setting-card")].every(e=>e.scrollWidth<=e.clientWidth+1)'), 'settings text overflow'
-    assert js('return getComputedStyle(document.querySelector("select")).appearance==="none"'), 'select styling missing'
     assert js('return document.querySelector(".api-actions a").href')=='https://platform.openai.com/api-keys'
     assert js('return document.querySelector("[aria-label=\\"API-ключ OpenAI\\"]").type')=='password'
+    assert js('return document.querySelector("[aria-label=\\"Озвучка\\"]").getAttribute("aria-checked")')=='false','voice must be off by default'
     assert js('return document.querySelector(".app-root").classList.contains("theme-dark")')
     click('[aria-label="Тёмная тема"]');assert not js('return document.querySelector(".app-root").classList.contains("theme-dark")')
     click('[aria-label="Тёмная тема"]');assert js('return document.querySelector(".app-root").classList.contains("theme-dark")');assert js('return getComputedStyle(document.querySelector(".app-root")).backgroundColor')=='rgb(16, 23, 19)'
     click('[aria-label="Спокойный режим"]');assert js('return document.querySelector("[aria-label=\\"Спокойный режим\\"]").getAttribute("aria-checked")')=='true'
     req(p+'/refresh',{});time.sleep(1);button('Настройки');assert js('return document.querySelector(".app-root").classList.contains("theme-dark")');assert js('return document.querySelector("[aria-label=\\"Спокойный режим\\"]").getAttribute("aria-checked")')=='true'
-    has('Звук и голос Алисы')
+    has('Озвучка');has('GPT-5.6 Sol')
     fill('.teacher-login-form label:first-child input','Анна Сергеевна')
     fill('.teacher-login-form label:last-of-type input','2468')
     button('Создать аккаунт');has('Открыть кабинет');button('Открыть кабинет');has('Результаты группы')
@@ -122,12 +134,14 @@ try:
     fill('[aria-label="Код отчёта ученика"]',report_code);button('Импортировать');has('Иван Петров');has('Пробная сделка')
     button('Настройки')
     button('Посмотреть');has('За каждой позицией — человек.');button('Пропустить знакомство');has('Настройки арены.')
-    size(1440,900);snap('settings-desktop')
+    size(1279,720)
+    assert js('const a=document.querySelector(".api-card"),f=document.querySelector(".settings-footnote");return a.scrollHeight<=a.clientHeight+1&&a.getBoundingClientRect().bottom<=f.getBoundingClientRect().top+1'),'API card content overlaps settings'
+    snap('settings-desktop')
     # System reduced motion must disable CSS animation too.
     click('[aria-label="Спокойный режим"]')
     req(p+'/goog/cdp/execute',{'cmd':'Emulation.setEmulatedMedia','params':{'features':[{'name':'prefers-reduced-motion','value':'reduce'}]}})
     button('Посмотреть');assert js('return getComputedStyle(document.querySelector(".welcome-core")).animationName')=='none'
     errors=[x for x in req(p+'/log',{'type':'browser'}) if x['level']=='SEVERE' and 'favicon' not in x['message']]
     assert not errors,errors
-    print('PASS: legend, favicon, dark default, map and ranks, 5 viewport sizes, no page overflow, six-stage scenarios, deal collapse at 100% tension, losing/winning paths, XP, persistence, constructor, voice controls, API link, teacher login and report import, settings, replay, reduced motion, clean console')
+    print('PASS: legend, favicon, dark default, animated custom selects, map and ranks, 5 viewport sizes, no page overflow, optimistic chat thinking state, six-stage scenarios, deal collapse at 100% tension, losing/winning paths, XP, persistence, constructor, voice controls off by default, fixed GPT-5.6 Sol, API settings layout, teacher login and report import, replay, reduced motion, clean console')
 finally:req(p,method='DELETE')

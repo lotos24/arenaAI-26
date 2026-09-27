@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { choices, defaults } from '../lib/engine';
 import {
   buildNegotiationPrompt,
+  DEFAULT_AI_MODEL,
   describeApiError,
   extractResponseText,
   generateOpponentReply,
@@ -29,16 +30,16 @@ test('negotiation prompt includes persona, stage, history, and the new reply', (
   assert.match(prompt.input, new RegExp(next.text.replace(/[?]/g, '\\?')));
 });
 
-test('connection check validates the selected model without generating text', async () => {
+test('connection check always validates GPT-5.6 Sol without generating text', async () => {
   const original = globalThis.fetch;
   let requested = '';
   globalThis.fetch = (async (url: string | URL | Request) => {
     requested = String(url);
-    return new Response(JSON.stringify({ id: 'gpt-4.1-mini' }), { status: 200 });
+    return new Response(JSON.stringify({ id: DEFAULT_AI_MODEL }), { status: 200 });
   }) as typeof fetch;
   try {
-    assert.equal(await testOpenAIConnection('unit-test-key-that-is-long-enough', 'gpt-4.1-mini'), 'gpt-4.1-mini');
-    assert.equal(requested, 'https://api.openai.com/v1/models/gpt-4.1-mini');
+    assert.equal(await testOpenAIConnection('unit-test-key-that-is-long-enough'), DEFAULT_AI_MODEL);
+    assert.equal(requested, `https://api.openai.com/v1/models/${DEFAULT_AI_MODEL}`);
   } finally {
     globalThis.fetch = original;
   }
@@ -55,16 +56,17 @@ test('generation uses Responses API without server-side storage', async () => {
   }) as typeof fetch;
   try {
     const reply = await generateOpponentReply({
-      ai: { apiKey: 'unit-test-key-that-is-long-enough', model: 'gpt-4.1-mini', remember: false, verifiedAt: 1 },
+      ai: { apiKey: 'unit-test-key-that-is-long-enough', model: 'a-stale-saved-model', remember: false, verifiedAt: 1 },
       config: defaults.supplier,
       turns: [],
       choice: choices('supplier', 0)[0],
       stage: 0,
     });
     assert.equal(reply, 'Гарантированный объём меняет ситуацию.');
-    assert.equal(requestBody.model, 'gpt-4.1-mini');
+    assert.equal(requestBody.model, DEFAULT_AI_MODEL);
     assert.equal(requestBody.store, false);
-    assert.equal(requestBody.max_output_tokens, 280);
+    assert.equal(requestBody.max_output_tokens, 320);
+    assert.deepEqual(requestBody.reasoning, { effort: 'low' });
   } finally {
     globalThis.fetch = original;
   }
@@ -76,7 +78,7 @@ test('API errors have a useful Russian explanation', async () => {
   try {
     let caught: unknown;
     try {
-      await testOpenAIConnection('unit-test-key-that-is-long-enough', 'gpt-4.1-mini');
+      await testOpenAIConnection('unit-test-key-that-is-long-enough');
     } catch (error) {
       caught = error;
     }
