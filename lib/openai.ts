@@ -1,5 +1,5 @@
 import type { Choice, Config, Turn } from './engine';
-import { openingLine, outcome, respond, scenarios, SESSION_STAGE_COUNT, stages, tension } from './engine';
+import { INTERESTS, openingLine, outcome, respond, scenarios, SESSION_STAGE_COUNT, stages, tension } from './engine';
 
 export const DEFAULT_AI_MODEL = 'gpt-5.6-sol';
 
@@ -149,6 +149,7 @@ export function buildNegotiationPrompt(config: Config, turns: Turn[], choice: Ch
       `Новая реплика игрока: ${choice.text}`,
       `Распознанный тип хода: ${intent}. Доверие после хода: ${projectedTrust}%. Напряжённость после хода: ${projectedTension}%.`,
       `Сценарный ориентир по смыслу: ${anchor}`,
+      ...(choice.interests?.length ? [`Игрок затронул твои скрытые интересы: ${choice.interests.map(id => INTERESTS[config.domain].find(item => item.id === id)?.label).join('; ')}. Признай это и раскрой чуть больше.`] : []),
       'Дай следующую реплику собеседника. Сохрани смысл сценарного ориентира, но сформулируй естественно и с учётом всей истории.',
     ].join('\n\n'),
   };
