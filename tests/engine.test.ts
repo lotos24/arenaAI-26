@@ -24,6 +24,63 @@ test('one insult immediately heats the deal and a repeated insult breaks it',()=
  assert.equal(outcome(config,[first,second],2).collapsed,true);
 });
 
+test('contact needs empathy, acknowledgement, collaboration, and mutual value together',()=>{
+ const keyword=evaluateText('Понимаю вашу позицию.','supplier',0);
+ const complete=evaluateText('Понимаю, что рост издержек важен для вас. Давайте вместе найдём решение, чтобы сохранить сотрудничество и учесть интересы обеих сторон.','supplier',0);
+ const negated=evaluateText('Я не понимаю вашу позицию, но давайте найдём решение.','supplier',0);
+ assert.ok(keyword.points<=11);
+ assert.ok(complete.points>=16);
+ assert.ok(complete.trust>keyword.trust);
+ assert.ok(negated.points<complete.points);
+ assert.doesNotMatch(negated.feedback,/признание позиции/i);
+ assert.match(keyword.feedback,/общую цель|ценность|вместе/i);
+});
+
+test('position framing rewards both sides, a boundary, and a check question',()=>{
+ const oneSided=evaluateText('Наша позиция — цена должна быть ниже.','supplier',1);
+ const aligned=evaluateText('Правильно ли я понимаю ваши условия: вам нужен рост на 15%, а наша позиция — не более 5%? Давайте сверим остальные ограничения.','supplier',1);
+ assert.ok(oneSided.points<=11);
+ assert.ok(aligned.points>=15);
+ assert.equal(aligned.intent,'question');
+ assert.match(oneSided.feedback,/обеих сторон|позици/i);
+});
+
+test('speech-like interest questions work without punctuation and ignore filler words',()=>{
+ const closed=evaluateText('Вы согласны?','supplier',2);
+ const spoken=evaluateText('ну эм хочу понять что для вас сейчас важнее цена объем или срок оплаты','supplier',2);
+ assert.ok(closed.points<=7);
+ assert.ok(spoken.points>=15);
+ assert.equal(spoken.intent,'question');
+ assert.match(spoken.feedback,/открытый вопрос/i);
+});
+
+test('a package scores above a lone number only when it contains reciprocal value',()=>{
+ const lone=evaluateText('Предлагаю цену 5%.','supplier',3);
+ const packageDeal=evaluateText('Предлагаю годовой контракт и гарантированный объём в обмен на рост цены не более 5%; для вас это сохранит загрузку.','supplier',3);
+ assert.ok(lone.points<=11);
+ assert.ok(packageDeal.points>=17);
+ assert.ok((packageDeal.tension??0)<(lone.tension??0));
+ assert.match(lone.feedback,/обмен|взамен/i);
+});
+
+test('objection handling separates acknowledgement from a concrete risk mechanism',()=>{
+ const acknowledgement=evaluateText('Понимаю ваш риск.','supplier',4);
+ const mitigation=evaluateText('Понимаю ваш риск по объёму. Давайте добавим квартальный коридор и пересмотр цены, если объём отклонится больше чем на 10%.','supplier',4);
+ assert.ok(acknowledgement.points<=8);
+ assert.ok(mitigation.points>=15);
+ assert.equal(mitigation.intent,'proposal');
+ assert.match(acknowledgement.feedback,/снизить риск|механизм|пилот|критерий|коридор/i);
+});
+
+test('closing needs terms, an owner, a deadline, and confirmation',()=>{
+ const vague=evaluateText('Договорились.','career',5);
+ const fixed=evaluateText('Зафиксируем роль и KPI письменно. Я отправлю итоги сегодня, а вы подтвердите, всё ли верно.','career',5);
+ assert.ok(vague.points<=8);
+ assert.ok(fixed.points>=17);
+ assert.equal(fixed.intent,'commitment');
+ assert.match(vague.feedback,/ответственного|срок|письмен/i);
+});
+
 const turn = (domain: Domain, stage: number, option: number): Turn => ({
  ...choices(domain, stage)[option], reply: ''
 });

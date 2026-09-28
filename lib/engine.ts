@@ -32,9 +32,147 @@ export function choices(domain: Domain, stage: number): Choice[] {
  [choice(supplier ? 'Зафиксируем цену, объём, коридор отклонения и сроки поставок письменно. Сверим проект договора в пятницу?' : 'Зафиксируем роль, KPI, ресурсы и дату пересмотра через три месяца. Я отправлю итоги встречи сегодня.', 'Фиксация', 18, 10, 'Конкретные условия, ответственный и срок превращают разговор в проверяемую договорённость.'), choice('Спасибо, давайте вернёмся к этому позже.', 'Отсрочка', 8, 0, 'Без даты и ответственного обсуждение может не привести к действию.'), choice('Отлично, считаю, что вы согласились со всем.', 'Допущение', 3, -10, 'Проверьте согласие собеседника, прежде чем объявлять о договорённости.')]
  ][Math.min(stage, SESSION_STAGE_COUNT - 1)];
 }
+
+type TextSignals = {
+ meaningfulWords:number;
+ openQuestion:boolean;
+ checkQuestion:boolean;
+ empathy:boolean;
+ acknowledgesOther:boolean;
+ collaboration:boolean;
+ mutualValue:boolean;
+ selfPosition:boolean;
+ otherPosition:boolean;
+ boundary:boolean;
+ interests:boolean;
+ reasons:boolean;
+ alternatives:boolean;
+ proposal:boolean;
+ reciprocity:boolean;
+ counterpartValue:boolean;
+ objection:boolean;
+ mitigation:boolean;
+ contingency:boolean;
+ closing:boolean;
+ written:boolean;
+ owner:boolean;
+ deadline:boolean;
+ confirms:boolean;
+ termGroups:number;
+ domainRelevant:boolean;
+};
+
+type StageAssessment = {
+ skill:string;
+ intent:NegotiationIntent;
+ points:number;
+ strengths:string[];
+ improvements:string[];
+};
+
+const STAGE_MAX=[17,17,19,19,17,18] as const;
+const SPEECH_FILLERS=/(?<![\p{L}\p{N}_])(?:ну|ээ+|эм+|как бы|в общем|короче|значит|вот|скажем так|так сказать)(?![\p{L}\p{N}_])/gu;
+const UNICODE_WORD_BOUNDARY='(?:(?<![\\p{L}\\p{N}_])(?=[\\p{L}\\p{N}_])|(?<=[\\p{L}\\p{N}_])(?![\\p{L}\\p{N}_]))';
+
+function normalizeNegotiationText(value:string) {
+ return value.normalize('NFKC').toLowerCase().replace(/ё/g,'е').replace(/[«»“”]/g,'"').replace(/[—–]/g,'-').replace(/\s+/g,' ').trim();
+}
+
+function countTrue(values:boolean[]) { return values.reduce((sum,value)=>sum+(value?1:0),0); }
+function semanticMatch(text:string,pattern:RegExp) {
+ const flags=pattern.flags.replace('g','');
+ return new RegExp(pattern.source.replaceAll('\\b',UNICODE_WORD_BOUNDARY),flags.includes('u')?flags:`${flags}u`).test(text);
+}
+
+function detectSignals(text:string,domain:Domain):TextSignals {
+ const speech=text.replace(SPEECH_FILLERS,' ').replace(/\s+/g,' ').trim();
+ const words=speech.match(/[a-zа-я0-9%]+/giu)??[];
+ const openQuestion=semanticMatch(speech,/\b(?:какие|какой|какая|почему|зачем|сколько|когда)\b|\bкак (?:вы|мы|это|лучше|можно)\b|\bчто (?:для вас|вам|сильнее|мешает|нужно|важнее|повлияет)\b|\bрасскаж(?:ите|и)|\bпоможет ли\b|\bможем ли\b/u);
+ const checkQuestion=semanticMatch(speech,/\b(?:правильно|верно) ли (?:я |мы )?(?:понима|зафиксир)|\bправильно (?:ли )?(?:я |мы )?понима|\bдавайте сверим|\bсверим (?:позиции|условия|понимание)|\bуточню[: ,]/u);
+ const rejectsUnderstanding=semanticMatch(speech,/\b(?:не понимаю|не вижу|мне безразлично|мне все равно)/u);
+ const empathy=!rejectsUnderstanding&&semanticMatch(speech,/\b(?:понимаю|вижу,? что|слышу,? что|признаю|ценю|спасибо за|учитываю|согласен,? что)/u);
+ const acknowledgesOther=!rejectsUnderstanding&&semanticMatch(speech,/\b(?:понимаю|вижу|слышу|признаю|учитываю)[, ]+(?:что|ваш|вашу|ваши)|\b(?:для вас|вам важно|ваша позици|ваши услов|ваш интерес|ваша цель|вы хотите|вы предлагаете|вас беспокоит)/u);
+ const collaboration=!semanticMatch(speech,/\b(?:не хочу|не будем|не готов) (?:обсуждать|искать|продолжать)/u)&&semanticMatch(speech,/\b(?:давайте|вместе|готов(?:ы)? обсудить|найд[её]м решение|найти решение|поиск решения|продолжить диалог|разобраться вместе|сверим)/u);
+ const mutualValue=semanticMatch(speech,/\b(?:обеих сторон|для обеих|взаимн|и для вас,? и для нас|сохранить (?:сотрудничество|отношения)|общая цель|интересы команды|усилит (?:команду|сотрудничество))/u);
+ const selfPosition=semanticMatch(speech,/\b(?:наша позици|моя позици|для нас|нам важно|мы готовы|мы можем|я рассчитываю|моя цель|наш(?:и|) предел|для меня|нам приемлем|я хочу)/u);
+ const otherPosition=semanticMatch(speech,/\b(?:ваша позици|ваши услов|для вас|вам важно|вы хотите|вы предлагаете|ваша цель|вам нужен|вам требуется)/u);
+ const boundary=semanticMatch(speech,/\b(?:не более|не меньше|в пределах|огранич|бюджет|максим|миним|приемлем|предел|рамк|красная линия|услови)/u);
+ const interests=semanticMatch(speech,/\b(?:интерес|приоритет|важн|потребност|цель|мотивац|опасени|ожидани|что вы хотите|что вам нужно)/u);
+ const reasons=semanticMatch(speech,/\b(?:почему|причин|что (?:сильнее )?влияет|из-за чего|ограничени|что мешает|что стоит за|риск|обоснов|основани)/u);
+ const alternatives=semanticMatch(speech,/\b(?:вариант|альтернатив|либо|или|что если|при каком условии|какие еще|иначе можно|несколько решений)/u);
+ const proposal=!semanticMatch(speech,/\bне предлага/u)&&semanticMatch(speech,/\b(?:предлага|готов(?:ы)?|можем|давайте (?:добавим|зафиксируем|согласуем|сделаем)|обязуем|бер[её]м на себя|вариант такой)/u);
+ const reciprocity=semanticMatch(speech,/\b(?:в обмен на|если .{2,80},? то|при условии|со своей стороны|встречн|взамен|за это|с вашей стороны)/u);
+ const counterpartValue=semanticMatch(speech,/\b(?:для вас это|вам даст|снизит ваш|снимет ваш|сохранит|гарантирует вам|гарантированн(?:ый|ого) объем|учтет ваши|вы получите|поможет вам|ваша выгода)/u);
+ const objection=semanticMatch(speech,/\b(?:понимаю|вижу|признаю|учитываю)[^.!?]{0,35}\b(?:риск|опасени|сомнени|возражени|ограничени|бюджет)|\b(?:вас беспокоит|главное возражение|риск для вас)/u);
+ const mitigation=semanticMatch(speech,/\b(?:снизить риск|снять риск|чтобы избежать|решим это|механизм|коридор|пилот|гаранти|страхов|этапн|контрольн|пересмотр|компенсир|защит)/u);
+ const contingency=semanticMatch(speech,/\b(?:если|при отклонении|в случае|при условии|по итогам|после проверки|при достижении|в зависимости от)/u);
+ const closing=semanticMatch(speech,/\b(?:зафиксир|подведем итог|итак,?|договорились|согласуем|закрепим|следующий шаг|резюмир|оформим)/u);
+ const written=semanticMatch(speech,/\b(?:письмен|письмо|договор|протокол|резюме встречи|проект|документ|итоги встречи)/u);
+ const owner=semanticMatch(speech,/\b(?:я отправлю|я подготовлю|мы отправим|мы подготовим|вы направите|ответственн|кто делает|беру на себя|назначим|со своей стороны)/u);
+ const deadline=semanticMatch(speech,/\b(?:сегодня|завтра|в пятниц|до [а-я0-9]|через \w+ (?:дн|недел|месяц)|дата|срок|к \d|\d{1,2}[./]\d{1,2})/u);
+ const confirms=semanticMatch(speech,/\b(?:подтвердите|верно ли зафиксир|правильно ли зафиксир|согласны ли|все верно|ничего не упустили|сверим итог|подтверждаете)/u);
+ const termPatterns=[
+  /(?:\d|\b(?:один|два|три|четыре|пять|шесть|семь|восемь|девять|десять)\b)[\w ]{0,12}(?:%|процент|рубл|тысяч|миллион)?/u,
+  /\b(?:цен|стоимост|скидк|зарплат|бюджет|марж|оплат|аванс)/u,
+  /\b(?:объем|поставк|партия|контракт|заказ|график)/u,
+  /\b(?:роль|ответственност|задач|полномочи|ресурс|команд)/u,
+  /\b(?:kpi|кпи|критери|показател|результат|метрик)/u,
+  /\b(?:срок|дата|день|недел|месяц|квартал|год|сегодня|завтра|пятниц)/u,
+ ];
+ const domainPattern=domain==='supplier'?/\b(?:себестоимост|марж|объем|поставк|оплат|контракт|цен)/u:/\b(?:роль|зарплат|kpi|кпи|ответственност|команд|проект|результат)/u;
+ const termGroups=countTrue(termPatterns.map(pattern=>semanticMatch(speech,pattern)));const domainRelevant=semanticMatch(speech,domainPattern);
+ return {meaningfulWords:words.length,openQuestion,checkQuestion,empathy,acknowledgesOther,collaboration,mutualValue,selfPosition,otherPosition,boundary,interests,reasons,alternatives,proposal,reciprocity,counterpartValue,objection,mitigation,contingency,closing,written,owner,deadline,confirms,termGroups,domainRelevant};
+}
+
+function assessStage(stage:number,s:TextSignals):StageAssessment {
+ const current=Math.max(0,Math.min(stage,SESSION_STAGE_COUNT-1));
+ let raw=3;let skill='Уточнение';let intent:NegotiationIntent='scripted';const strengths:string[]=[];const improvements:string[]=[];
+ const add=(condition:boolean,points:number,label:string)=>{if(condition){raw+=points;strengths.push(label)}};
+ if(current===0){
+  skill='Контакт';
+  add(s.empathy,4,'эмпатия');add(s.acknowledgesOther,3,'признание позиции собеседника');add(s.collaboration,4,'приглашение к диалогу');add(s.mutualValue,3,'общая ценность');
+  if(!s.empathy&&!s.acknowledgesOther)improvements.push('Признайте позицию или переживание собеседника.');
+  if(!s.collaboration)improvements.push('Предложите вместе искать решение.');
+  if(!s.mutualValue)improvements.push('Назовите общую цель или ценность отношений.');
+ }else if(current===1){
+  skill='Рамка разговора';intent=s.openQuestion||s.checkQuestion?'question':'scripted';
+  add(s.checkQuestion,4,'проверка понимания');add(s.selfPosition,3,'ваша позиция');add(s.otherPosition,3,'позиция собеседника');add(s.boundary,3,'границы и ограничения');add(s.openQuestion,2,'вопрос на сверку');
+  if(!s.selfPosition||!s.otherPosition)improvements.push('Обозначьте позиции обеих сторон, не подменяя одну другой.');
+  if(!s.checkQuestion&&!s.openQuestion)improvements.push('Проверьте, одинаково ли вы понимаете условия и ограничения.');
+  if(!s.boundary)improvements.push('Добавьте конкретную границу, критерий или ограничение.');
+ }else if(current===2){
+  skill='Интересы';intent='question';
+  add(s.openQuestion,4,'открытый вопрос');add(s.interests,4,'фокус на интересах');add(s.reasons,3,'поиск причин и ограничений');add(s.alternatives||s.termGroups>=2,3,'исследование нескольких параметров');add(s.domainRelevant,2,'предметная область вопроса');
+  if(!s.openQuestion)improvements.push('Задайте открытый вопрос, на который нельзя ответить только «да» или «нет».');
+  if(!s.interests&&!s.reasons)improvements.push('Спросите о приоритетах, причинах или скрытых ограничениях.');
+  if(!s.alternatives&&s.termGroups<1)improvements.push('Предложите несколько осей для ответа: срок, объём, ресурсы или критерии.');
+ }else if(current===3){
+  skill='Взаимный обмен';intent='proposal';
+  add(s.proposal,3,'ясное предложение');add(s.termGroups>=2,4,'несколько конкретных условий');add(s.reciprocity,5,'встречный обмен');add(s.counterpartValue||s.mutualValue,3,'ценность для второй стороны');add(s.alternatives||s.contingency,2,'вариативность условий');
+  if(!s.proposal)improvements.push('Сформулируйте предложение как конкретный следующий ход.');
+  if(s.termGroups<2)improvements.push('Свяжите минимум два условия: цену, срок, объём, роль, KPI или ресурсы.');
+  if(!s.reciprocity)improvements.push('Покажите обмен: что вы даёте и что ожидаете взамен.');
+ }else if(current===4){
+  skill='Работа с возражением';intent=s.mitigation?'proposal':'question';
+  add(s.objection,4,'признание возражения');add(s.openQuestion,3,'диагностика сомнения');add(s.mitigation,4,'механизм снижения риска');add(s.contingency,3,'условие пересмотра');add(s.termGroups>=2,2,'проверяемые параметры');
+  if(!s.objection)improvements.push('Сначала назовите риск или сомнение собеседника своими словами.');
+  if(!s.openQuestion&&!s.mitigation)improvements.push('Уточните причину возражения или предложите способ снизить риск.');
+  if(!s.contingency&&s.termGroups<2)improvements.push('Добавьте проверяемый механизм: пилот, критерий, коридор или дату пересмотра.');
+ }else{
+  skill='Фиксация';intent='commitment';
+  add(s.closing,4,'фиксация итога');add(s.termGroups>=2,3,'конкретные условия');add(s.written,2,'письменное подтверждение');add(s.owner,3,'ответственный');add(s.deadline,3,'срок');add(s.confirms,2,'проверка согласия');
+  if(!s.closing)improvements.push('Кратко зафиксируйте, о чём договорились.');
+  if(!s.owner||!s.deadline)improvements.push('Назовите ответственного и срок следующего шага.');
+  if(!s.written&&!s.confirms)improvements.push('Предложите письменное подтверждение или проверьте согласие второй стороны.');
+ }
+ const evidenceCap=strengths.length===0?8:strengths.length===1?11:strengths.length===2?14:STAGE_MAX[current];
+ const lengthCap=s.meaningfulWords<3?7:s.meaningfulWords<6?11:STAGE_MAX[current];
+ return {skill,intent,points:Math.max(3,Math.min(raw,evidenceCap,lengthCap,STAGE_MAX[current])),strengths,improvements};
+}
+
 export function evaluateText(text: string, domain: Domain, stage: number): Choice {
  const clean = text.trim();
- const t = clean.toLowerCase().replace(/ё/g,'е');
+ const t = normalizeNegotiationText(clean);
  const make = (skill:string,points:number,trust:number,feedback:string,tensionDelta:number,intent:NegotiationIntent):Choice => ({text:clean,skill,points,trust,feedback,tension:tensionDelta,intent});
  if (/(?:на\s*хуй|нахуй|хуесос|хуй|хуйн|еба|ебан|ебл|пизд|мудак|дебил|идиот|туп(?:ой|ая|ые)|ублюд|мраз|говн|заткнись|пош[её]л|придур|урод|лох)/i.test(clean)) {
   return make('Оскорбление',0,-32,'Оскорбление мгновенно разрушает рабочий контакт. Остановитесь, признайте срыв и верните разговор к предметным условиям.',50,'insult');
@@ -45,35 +183,28 @@ export function evaluateText(text: string, domain: Domain, stage: number): Choic
  if (/(иначе|ультиматум|обязаны|последнее предложение|только согласие|не будете|мы уйдем|я уйду|никаких обсуждений)/.test(t)) {
   return make('Ультиматум',2,-23,'Угроза заставляет собеседника защищаться и резко приближает срыв сделки.',34,'threat');
  }
- const hasQuestion=/\?|\b(какие|какой|почему|что|как|когда|сколько|расскаж|поможет|важно ли)\b/.test(t);
- const hasProposal=/(предлага|готов(?:ы)?|можем|давайте|соглас(?:ен|ны)|фиксир|обязуем|берем на себя)/.test(t);
- const hasConcrete=/(\d|%|руб|цен|срок|дат|объем|контракт|оплат|бюджет|зарплат|kpi|кпи|роль|гарант|пилот|ресурс|ответствен|квартал|месяц|недел|дн(?:я|ей)|в обмен)/.test(t);
- const hasSharedValue=/(вместе|обеих сторон|взаим|в обмен|встречн|сотруднич|команд|интерес)/.test(t);
+ if (semanticMatch(t,/\b(?:ваши проблемы меня не|меня не волнует|мне не важно|не касается|это несерьезно|вы просто ищете повод|обсуждать нечего|не вижу смысла обсуждать)/u)) {
+  return make('Обесценивание',2,-20,'Вы отвергли интересы или возражение второй стороны. Такой ход усиливает сопротивление и не решает задачу этапа.',28,'demand');
+ }
+ const signals=detectSignals(t,domain);
+ const hasSemanticEvidence=Object.values(signals).some(value=>value===true)||signals.termGroups>0;
  const isDemand=/(требую|дайте|снижайте|повышайте|мне нужно|мне нужен|вы должны|согласитесь|принимайте)/.test(t);
- const words=clean.split(/\s+/).filter(Boolean).length;
- if ((words<7&&!hasQuestion&&!hasConcrete) || /^(ладно|хорошо|не знаю|решайте|думайте|просто сделайте|ну и что)[.! ]*$/.test(t)) {
+ if (/^(?:хорошо[, ]*)?(?:я |мы )?(?:согласен|согласны|принимаю|принимаем)(?: со всем| на все| любые условия| ваши условия)[.! ]*$/.test(t)) {
+  return make('Безусловная уступка',5,2,'Согласие без проверки условий сохраняет спокойствие, но лишает вас переговорной позиции. Уточните предмет, границы и встречное обязательство.',7,'vague');
+ }
+ if ((signals.meaningfulWords<4&&!hasSemanticEvidence) || /^(?:ладно|хорошо|не знаю|решайте|думайте|просто сделайте|ну и что)[.! ]*$/.test(t)) {
   return make('Без конкретики',5,-5,'Собеседнику не за что зацепиться: нет вопроса, условия или следующего шага. Напряжённость растёт из-за неопределённости.',14,'vague');
  }
- if (isDemand&&!hasSharedValue&&!hasQuestion) {
+ if (isDemand&&!signals.mutualValue&&!signals.reciprocity&&!signals.openQuestion) {
   return make('Одностороннее требование',5,-10,'Требование обозначает вашу позицию, но не даёт собеседнику встречной ценности или выбора.',19,'demand');
  }
- const patterns = [
-  /понима|сотруднич|команд|вместе|спасибо/,
-  /правильно понимаю|позици|ограничен|рамк|приемлем/,
-  /\?|какие|что |почему|расскаж|поможет|важно/,
-  /предлага|в обмен|\d+%|результат|объём|kpi|контракт/,
-  /риск|сомнен|критери|коридор|пилот|пересмотр/,
-  /зафикс|письмен|пятниц|дат|отправ|срок|итог/,
- ];
- if (patterns[Math.min(stage,patterns.length-1)].test(t) && clean.length >= 35) {
-  const ideal=choices(domain,stage)[0];
-  const intent:NegotiationIntent=stage===2?'question':stage===3?'proposal':stage===5?'commitment':'scripted';
-  return {...ideal,text:clean,intent,feedback:'В реплике обнаружены признаки приёма «'+ideal.skill+'». '+ideal.feedback};
- }
- if (hasProposal&&hasConcrete) return make('Конкретное предложение',15,7,'Есть проверяемое условие и следующий шаг. Усильте предложение встречной ценностью для второй стороны.',-6,'proposal');
- if (hasQuestion) return make('Открытый вопрос',12,5,'Вопрос помогает раскрыть ограничения. Следующим ходом соберите услышанное в конкретный обмен.',-3,'question');
- if (hasProposal) return make('Предложение без условий',8,0,'Направление обозначено, но не хватает цифр, срока или встречного обязательства.',7,'vague');
- return make('Без конкретики',6,-3,'Реплика не содержит ясного вопроса, условия или следующего шага, поэтому неопределённость усиливает напряжение.',11,'vague');
+ const assessment=assessStage(stage,signals);const maximum=STAGE_MAX[Math.max(0,Math.min(stage,SESSION_STAGE_COUNT-1))];const quality=assessment.points/maximum;
+ const trust=quality>=.85?10:quality>=.68?6:quality>=.5?2:-4;
+ const tensionDelta=quality>=.85?-9:quality>=.68?-4:quality>=.5?4:11;
+ const positive=assessment.strengths.length?`Сработало: ${assessment.strengths.slice(0,3).join(', ')}.`:'Ход пока не решает задачу этого этапа.';
+ const advice=assessment.improvements[0]??'Формулировка сочетает несколько сильных элементов этапа.';
+ const intent=assessment.points<=7&&!signals.openQuestion&&!signals.proposal?'vague':assessment.intent;
+ return make(assessment.skill,assessment.points,trust,`${positive} ${advice}`,tensionDelta,intent);
 }
 export function threshold(config: Config) { return { 'Базовый': 52, 'Продвинутый': 65, 'Эксперт': 78 }[config.difficulty]; }
 export function respond(config: Config, stage: number, c: Choice, trust: number): string {
