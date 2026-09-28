@@ -1,8 +1,12 @@
 export type Domain = 'supplier' | 'career' | 'team';
-export type Config = { domain: Domain; topic: string; difficulty: 'Базовый' | 'Продвинутый' | 'Эксперт'; tone: 'Сдержанный' | 'Дружелюбный' | 'Жёсткий'; role: string; goal: string };
+/** Hidden interest written by an administrator: keywords are word stems the player has to touch. */
+export type CustomInterest = { id: string; label: string; hint: string; keywords: string[]; reveal: string };
+/** Extended scenario from the constructor or an imported JSON: overrides the story texts of the domain. */
+export type CustomScenario = { person?: string; brief?: string; opening?: string; frame?: { goal: string; batna: string; zopa: string }; interests?: CustomInterest[] };
+export type Config = { domain: Domain; topic: string; difficulty: 'Базовый' | 'Продвинутый' | 'Эксперт'; tone: 'Сдержанный' | 'Дружелюбный' | 'Жёсткий'; role: string; goal: string; custom?: CustomScenario };
 export type NegotiationIntent = 'scripted' | 'insult' | 'threat' | 'vague' | 'demand' | 'question' | 'proposal' | 'repair' | 'commitment' | 'silence';
 export type TechniqueId = 'empathy' | 'spinSituation' | 'spinProblem' | 'harvardInterests' | 'harvardPackage' | 'harvardCriteria' | 'closing' | 'batna' | 'batnaThreat' | 'positional' | 'pressure' | 'concession' | 'vague';
-export type Choice = { text: string; skill: string; points: number; trust: number; feedback: string; tension?: number; intent?: NegotiationIntent; interests?: string[]; freeText?: boolean; technique?: TechniqueId };
+export type Choice = { text: string; skill: string; points: number; trust: number; feedback: string; tension?: number; intent?: NegotiationIntent; interests?: string[]; freeText?: boolean; technique?: TechniqueId; timerLeft?: number; voice?: boolean };
 export type Turn = Choice & { reply: string };
 export const defaults: Record<Domain, Config> = {
  supplier: { domain: 'supplier', topic: 'Цена долгосрочного контракта', difficulty: 'Продвинутый', tone: 'Сдержанный', role: 'Директор по продажам', goal: 'Сохранить маржу и получить гарантированный объём' },
@@ -15,8 +19,43 @@ export const scenarios = {
  team: { title: 'Сроки против выгорания', label: 'Команда и управление', person: 'Игорь Лебедев', initials: 'ИЛ', description: 'Клиент сдвинул релиз на две недели раньше. Договоритесь с ведущим разработчиком, не потеряв ни срок, ни команду.', brief: 'Вы руководите проектом. Клиент перенёс релиз на две недели раньше. Ведущий разработчик отказывается от переработок: команда устала после прошлого спринта. Ваша цель — сдать в срок хотя бы ключевую часть и не потерять ключевого сотрудника. Вы можете сократить объём, дать отгулы и подключить стажёра. Альтернатива: попросить клиента о поэтапной поставке.', opening: 'Сразу скажу: ещё один спринт с ночными сменами команда не выдержит. Я против нового срока.', frame: { goal: 'Сдать ключевую часть релиза в срок и не потерять ведущего разработчика.', batna: 'Попросить клиента о поэтапной поставке и сдвинуть вторую часть.', zopa: 'Ключевые функции к новому сроку без ночных смен. Весь объём к сроку лежит вне зоны: на это команда не согласится.' } }
 };
 const OPENING_LEAD: Record<Config['tone'], string> = { Дружелюбный: 'Хорошо, что нашли время встретиться. ', Сдержанный: '', Жёсткий: 'Времени у меня немного, так что коротко. ' };
+
+/** Topics the hand-written stories of each domain were written for (default, map levels and fitting presets). */
+export const STORY_TOPICS: Record<Domain, string[]> = {
+ supplier: ['Цена долгосрочного контракта', 'Контракт с локальным поставщиком', 'Поставки для региональной сети', 'Условия федерального тендера', 'Международный контракт поставки', 'Рост цен на сырьё на 15%'],
+ career: ['Повышение и новая зона ответственности', 'Повышение до ведущего специалиста', 'Переговоры с советом директоров', 'Переход на следующий грейд и пересмотр зарплаты', 'Удержание тимлида с оффером от конкурента'],
+ team: ['Срочный релиз без выгорания команды', 'Срочный релиз для регионального клиента', 'Релиз федерального проекта', 'Горящий релиз для ключевого клиента'],
+};
+/** Hand-written story texts only fit their own topics; any other topic switches to templates with {topic}, {role} and {goal}. */
+export function usesStory(config: Pick<Config, 'domain' | 'topic' | 'custom'>) {
+ return !config.custom && STORY_TOPICS[config.domain].includes(config.topic.trim());
+}
+const lowerFirst = (value: string) => value ? value[0].toLowerCase() + value.slice(1) : value;
+/** Fills {topic}, {role} and {goal} (lower-cased so it reads inside a sentence). */
+export function fillTemplate(text: string, config: Pick<Config, 'topic' | 'role' | 'goal'>) {
+ return text.replaceAll('{topic}', config.topic.trim()).replaceAll('{role}', lowerFirst(config.role.trim())).replaceAll('{goal}', lowerFirst(config.goal.trim().replace(/[.!]+$/, '')));
+}
+const GENERIC_STORY = {
+ brief: 'Тема встречи: «{topic}». Ваш собеседник — {role}. Его цель: {goal}. Ваша задача — договориться на условиях, выгодных обеим сторонам, и не уступать без встречной ценности.',
+ opening: 'Давайте обсудим тему «{topic}». Сразу скажу: для меня важно {goal}, и от этого я отталкиваюсь.',
+ frame: { goal: 'Договориться по теме «{topic}» на условиях, которые вы готовы защищать.', batna: 'Ваш запасной вариант, если договориться не удастся: другой партнёр, перенос решения или поэтапный запуск.', zopa: 'Между вашим минимально приемлемым вариантом и пределом собеседника, для которого важно {goal}.' },
+};
+const initialsOf = (person: string) => person.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]!.toUpperCase()).join('');
+/** Texts of the current scenario: the domain story, an administrator's own scenario or templates for a custom topic. */
+export function scenarioFor(config: Config) {
+ const base = scenarios[config.domain];
+ const story = usesStory(config);
+ const person = config.custom?.person?.trim() || base.person;
+ const frame = config.custom?.frame ?? (story ? base.frame : { goal: fillTemplate(GENERIC_STORY.frame.goal, config), batna: GENERIC_STORY.frame.batna, zopa: fillTemplate(GENERIC_STORY.frame.zopa, config) });
+ return {
+  story, label: base.label, person, initials: initialsOf(person),
+  brief: config.custom?.brief?.trim() || (story ? base.brief : fillTemplate(GENERIC_STORY.brief, config)),
+  opening: config.custom?.opening?.trim() || (story ? base.opening : fillTemplate(GENERIC_STORY.opening, config)),
+  frame,
+ };
+}
 /** The opponent's first line: the tone chosen by the administrator is audible from the very first message. */
-export function openingLine(config: Config) { return OPENING_LEAD[config.tone] + scenarios[config.domain].opening; }
+export function openingLine(config: Config) { return OPENING_LEAD[config.tone] + scenarioFor(config).opening; }
 /** Domain-specific ending, so the same score reads as a concrete consequence of the negotiation. */
 export function finale(config: Config, result: { won: boolean; collapsed: boolean }, completed: boolean) {
  const endings: Record<Domain, { won: string; lost: string; collapsed: string; early: string }> = {
@@ -24,7 +63,8 @@ export function finale(config: Config, result: { won: boolean; collapsed: boolea
   career: { won: 'Вы получаете ведущую роль и согласованный пересмотр зарплаты по измеримым KPI.', lost: 'Повышение отложено: руководитель не увидел проверяемых оснований для решения.', collapsed: 'Разговор сорван, и доверие к вам как к кандидату на рост заметно снизилось.', early: 'Разговор прерван, решение о повышении не принято.' },
   team: { won: 'Ключевая часть релиза выходит в срок без ночных смен, команда получает отгулы после сдачи.', lost: 'Команда работает только в обычном режиме — срок клиента под угрозой.', collapsed: 'Конфликт обострился: ведущий разработчик всерьёз задумался об уходе.', early: 'Разговор прерван, план релиза не согласован.' },
  };
- const ending = endings[config.domain];
+ const generic = { won: 'Договорённость по теме «{topic}» закреплена: условия, ответственные и сроки согласованы.', lost: 'По теме «{topic}» договорённости нет: встречной ценности оказалось недостаточно.', collapsed: 'Переговоры по теме «{topic}» сорваны — вернуть доверие будет непросто.', early: 'Встреча прервана, решение по теме «{topic}» не принято.' };
+ const ending = usesStory(config) ? endings[config.domain] : Object.fromEntries(Object.entries(generic).map(([key, text]) => [key, fillTemplate(text, config)])) as typeof generic;
  return result.collapsed ? ending.collapsed : result.won ? ending.won : completed ? ending.lost : ending.early;
 }
 const choice = (text: string, skill: string, points: number, trust: number, feedback: string): Choice => ({text,skill,points,trust,feedback});
@@ -60,19 +100,37 @@ export const INTERESTS: Record<Domain, Interest[]> = {
   { id: 'quality', label: 'Не выпускать сырой релиз', hint: 'Обсудите тесты и заморозку кода.', pattern: /\b(?:качеств|тест|баг|заморозк|стажер|ревью|стабильн)/u, reveal: 'Для меня принципиально не выпускать сырое. Тесты и заморозка кода снимают этот страх.' },
  ],
 };
+/** Domain-agnostic interests for a custom topic without its own interests. */
+export const GENERIC_INTERESTS: Interest[] = [
+ { id: 'risk', label: 'Снижение рисков и гарантии', hint: 'Спросите, какой риск беспокоит собеседника, и предложите гарантию.', pattern: /\b(?:риск|гаранти|страхов|пилот|коридор|подстрах)/u, reveal: 'Если честно, больше всего меня беспокоят риски. С понятными гарантиями разговор пойдёт легче.' },
+ { id: 'timing', label: 'Реалистичные сроки и ресурсы', hint: 'Обсудите график, этапы и ресурсы.', pattern: /\b(?:срок|график|этап|ресурс|дата|поэтап)/u, reveal: 'Сроки для меня критичны: под них уже заложены ресурсы, и сдвигать их больно.' },
+ { id: 'value', label: 'Выгода, которую можно обосновать', hint: 'Спросите, как собеседник будет защищать решение, и предложите измеримый результат.', pattern: /\b(?:выгод|окупаем|kpi|кпи|результат|эффект|показател|обоснов)/u, reveal: 'Мне нужно обосновать решение: покажите измеримый результат, и я смогу его защитить.' },
+];
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function keywordPattern(keywords: string[]) {
+ const stems = keywords.map(keyword => normalizeNegotiationText(keyword)).filter(Boolean).map(escapeRegExp);
+ return new RegExp(`\\b(?:${stems.join('|') || '(?!)'})`, 'u');
+}
+/** Hidden interests of the current scenario: from the administrator's JSON, the domain story or generic ones. */
+export function interestsFor(config: Config): Interest[] {
+ if (config.custom?.interests?.length) return config.custom.interests.map(item => ({ id: item.id, label: item.label, hint: item.hint, reveal: item.reveal, pattern: keywordPattern(item.keywords) }));
+ return usesStory(config) ? INTERESTS[config.domain] : GENERIC_INTERESTS;
+}
 export function discoveredInterests(turns: Turn[]) { return new Set(turns.flatMap(turn => turn.interests ?? [])); }
 /**
  * Marks interests the move touches for the first time. Hostile moves reveal nothing.
  * Every new interest adds trust; a free-text reply also earns points (up to the stage maximum) and lowers tension.
  */
-export function withInterests(domain: Domain, stage: number, c: Choice, turns: Turn[]): Choice {
- if (c.trust < 0 || c.intent === 'silence') return c;
+export function withInterests(source: Domain | Config, stage: number, c: Choice, turns: Turn[]): Choice {
+ const list = typeof source === 'string' ? INTERESTS[source] : interestsFor(source);
+ // Only real conflict reveals nothing; a merely weak free-text phrasing can still touch an interest.
+ if (c.trust <= (c.freeText ? -10 : -1) || c.intent === 'silence' || c.intent === 'insult' || c.intent === 'threat' || c.intent === 'demand') return c;
  const known = discoveredInterests(turns);
  const text = normalizeNegotiationText(c.text);
- const found = INTERESTS[domain].filter(item => !known.has(item.id) && semanticMatch(text, item.pattern)).map(item => item.id);
+ const found = list.filter(item => !known.has(item.id) && semanticMatch(text, item.pattern)).map(item => item.id);
  if (!found.length) return c;
  const maximum = STAGE_MAX[Math.max(0, Math.min(stage, SESSION_STAGE_COUNT - 1))];
- const labels = found.map(id => INTERESTS[domain].find(item => item.id === id)!.label.toLowerCase()).join('; ');
+ const labels = found.map(id => list.find(item => item.id === id)!.label.toLowerCase()).join('; ');
  return {
   ...c, interests: found, trust: c.trust + 2 * found.length,
   ...(c.freeText ? { points: Math.min(maximum, c.points + 2 * found.length), tension: (c.tension ?? 0) - 3 * found.length, feedback: `${c.feedback} Вы затронули скрытый интерес собеседника: ${labels}.` } : {}),
@@ -95,20 +153,24 @@ export function arrangeChoices<T>(items: T[], seed: string): T[] {
  for (let i = result.length - 1; i > 0; i--) { const j = Math.floor(random() * (i + 1)); [result[i], result[j]] = [result[j], result[i]]; }
  return result;
 }
-const pick = (domain: Domain, supplier: string, career: string, team: string) => domain === 'supplier' ? supplier : domain === 'career' ? career : team;
+const pickStory = (domain: Domain, supplier: string, career: string, team: string) => domain === 'supplier' ? supplier : domain === 'career' ? career : team;
 /** Recovery branch offered when tension is close to collapse: the player can de-escalate instead of losing the deal. */
 export const RECOVERY_TENSION = 70;
 export function recoveryChoice(): Choice {
  return {text:'Похоже, я слишком надавил. Давайте вернёмся на шаг назад: что для вас сейчас самое важное?',skill:'Восстановление контакта',points:12,trust:8,feedback:'Вы признали срыв тона и вернули разговор к интересам. Это снижает напряжённость, но упущенные очки этапа уже не вернуть.',tension:-14,intent:'repair'};
 }
-export function choices(domain: Domain, stage: number, currentTension = 0): Choice[] {
+/** Answer options of a stage. A Config with a custom topic gets template texts filled with its topic, role and goal. */
+export function choices(source: Domain | Config, stage: number, currentTension = 0): Choice[] {
+ const domain = typeof source === 'string' ? source : source.domain;
+ const template = typeof source === 'string' || usesStory(source) ? null : source;
+ const pick = (_domain: Domain, supplier: string, career: string, team: string, generic: string) => template ? fillTemplate(generic, template) : pickStory(domain, supplier, career, team);
  const options = [
- [choice(pick(domain,'Понимаю, что издержки выросли. Давайте посмотрим, как сохранить сотрудничество и экономику обеих сторон.','Спасибо за возможность обсудить мой рост. Хочу найти решение, которое усилит и мой вклад, и команду.','Слышу, что команда на пределе, и это для меня важно. Давайте вместе найдём вариант, который не сожжёт людей и сохранит доверие клиента.'), 'Контакт', 17, 11, 'Вы признали позицию собеседника и обозначили общую цель.'), choice(pick(domain,'У других поставщиков дешевле. Снижайте цену, иначе мы уйдём.','Если повышения не будет, мне придётся уйти.','Сроки не обсуждаются. Если вы не готовы, найду того, кто готов.'), 'Угроза уходом', 3, -17, 'Ультиматум сужает пространство для обсуждения. Сначала выясните ограничения.'), choice(pick(domain,'Давайте не будем тратить время: какую скидку вы готовы дать, чтобы мы остались?','Давайте сразу к делу: на какую прибавку я могу рассчитывать?','Давайте без лирики: сколько дней вам не хватает, чтобы успеть к новой дате?'), 'Торг без контакта', 8, 1, 'Деловой тон уместен, но вы перешли к цифрам, не признав позицию собеседника и не обозначив общую цель. Контакт остался формальным.')],
- [choice(pick(domain,'Правильно понимаю: вам нужен рост на 15%, а для нас приемлемо не больше 5%? Давайте сверим, что ещё входит в условия.','Я рассчитываю на ведущую роль и рост на 15%. Какие ограничения по бюджету и срокам есть у команды?','Правильно понимаю: вы против переработок, а мне нужно показать клиенту ключевую часть через две недели? Давайте сверим, что входит в релиз.'), 'Рамка разговора', 17, 9, 'Вы спокойно обозначили обе позиции и открыли пространство для уточнений.'), choice(pick(domain,'Наша позиция простая: мы готовы принять рост не больше 5%. Давайте от этого и отталкиваться.','Моя позиция: ведущая роль и плюс 15% к зарплате. Давайте от этого и отталкиваться.','Моя позиция: через две недели релиз должен быть у клиента. От этого и будем отталкиваться.'), 'Только своя позиция', 11, 2, 'Граница обозначена ясно, но позиция собеседника и его ограничения остались за кадром — сверки не получилось.'), choice('Моя позиция окончательная. От вас требуется только согласие.', 'Давление', 3, -16, 'Жёсткая фиксация позиции заставляет собеседника защищаться.')],
- [choice(pick(domain,'Что сильнее влияет на цену? Поможет ли гарантированный объём, срок контракта или график оплаты?','Какие результаты, ответственность и сроки позволят вам обосновать повышение?','Что сильнее всего выматывает команду: объём, ночные деплои или правки в последний момент? Что помогло бы выдержать срок?'), 'Интересы', 19, 12, 'Открытый вопрос переводит разговор от заявленных позиций к интересам и ограничениям.'), choice('Расскажите подробнее, что для вас сейчас самое важное.', 'Уточнение', 13, 6, 'Полезный вопрос. Усильте его вариантами и проверяемыми критериями.'), choice('Ваши внутренние проблемы меня не касаются. Мне нужен результат.', 'Давление', 3, -18, 'Игнорирование ограничений снижает доверие и готовность искать решение.')],
- [choice(pick(domain,'Предлагаю годовой контракт, гарантированный объём и ускоренную оплату в обмен на рост цены не более 5%.','Предлагаю ведущую роль сейчас и рост на 15% либо пересмотр через три месяца по согласованным KPI.','Предлагаю сократить релиз до трёх ключевых функций, подключить стажёра к тестам и дать команде два отгула после сдачи в обмен на срок по ключевой части.'), 'Взаимный обмен', 19, 10, 'Вы собрали пакет условий и связали уступки со встречной ценностью.'), choice(pick(domain,'Можем согласиться на 10%, если это упростит решение.','Согласен на небольшую прибавку, детали можно обсудить потом.','Давайте без отгулов, а потом я постараюсь что-нибудь компенсировать.'), 'Односторонний компромисс', 11, 3, 'Компромисс возможен, но уступка без встречного условия ослабляет позицию.'), choice('Это моё последнее предложение. Обсуждать больше нечего.', 'Давление', 3, -20, 'Жёсткая позиция без аргументов блокирует совместный поиск.')],
- [choice(pick(domain,'Понимаю риск по объёму. Давайте добавим квартальный коридор и пересмотр цены, если объём отклонится больше чем на 10%.','Понимаю риск бюджета. Давайте ограничим пилот тремя месяцами и заранее согласуем измеримые критерии результата.','Понимаю риск по качеству. Давайте заморозим код за три дня до релиза, а если критичных багов больше пяти, перенесём вторую часть.'), 'Работа с риском', 17, 10, 'Вы признали возражение и предложили механизм, который снижает риск собеседника.'), choice('Какая часть предложения вызывает у вас больше всего сомнений?', 'Диагностика возражения', 12, 6, 'Вы уточняете причину сомнений, но следующему ходу понадобится конкретное решение.'), choice('Вы просто ищете повод отказать. Это несерьёзно.', 'Обесценивание', 2, -19, 'Обесценивание возражения усиливает сопротивление и разрушает рабочий контакт.')],
- [choice(pick(domain,'Зафиксируем цену, объём, коридор отклонения и сроки поставок письменно. Сверим проект договора в пятницу?','Зафиксируем роль, KPI, ресурсы и дату пересмотра через три месяца. Я отправлю итоги встречи сегодня.','Зафиксируем объём релиза, дату заморозки кода, отгулы и ответственного за тесты. Я отправлю план команде и клиенту сегодня.'), 'Фиксация', 18, 10, 'Конкретные условия, ответственный и срок превращают разговор в проверяемую договорённость.'), choice('Отлично, в целом договорились. Детали согласуем по почте.', 'Размытая фиксация', 9, 1, 'Звучит как итог, но без конкретных условий, ответственного и срока договорённость легко «расползётся».'), choice('Отлично, считаю, что вы согласились со всем.', 'Допущение', 3, -10, 'Проверьте согласие собеседника, прежде чем объявлять о договорённости.')]
+ [choice(pick(domain,'Понимаю, что издержки выросли. Давайте посмотрим, как сохранить сотрудничество и экономику обеих сторон.','Спасибо за возможность обсудить мой рост. Хочу найти решение, которое усилит и мой вклад, и команду.','Слышу, что команда на пределе, и это для меня важно. Давайте вместе найдём вариант, который не сожжёт людей и сохранит доверие клиента.','Спасибо, что нашли время. Понимаю, что для вас важно {goal}. Давайте найдём решение, которое сработает для обеих сторон.'), 'Контакт', 17, 11, 'Вы признали позицию собеседника и обозначили общую цель.'), choice(pick(domain,'У других поставщиков дешевле. Снижайте цену, иначе мы уйдём.','Если повышения не будет, мне придётся уйти.','Сроки не обсуждаются. Если вы не готовы, найду того, кто готов.','Если условия нас не устроят, мы просто уйдём к другим. Решайте быстрее.'), 'Угроза уходом', 3, -17, 'Ультиматум сужает пространство для обсуждения. Сначала выясните ограничения.'), choice(pick(domain,'Давайте не будем тратить время: какую скидку вы готовы дать, чтобы мы остались?','Давайте сразу к делу: на какую прибавку я могу рассчитывать?','Давайте без лирики: сколько дней вам не хватает, чтобы успеть к новой дате?','Давайте сразу к цифрам: на какие условия вы готовы пойти?'), 'Торг без контакта', 8, 1, 'Деловой тон уместен, но вы перешли к цифрам, не признав позицию собеседника и не обозначив общую цель. Контакт остался формальным.')],
+ [choice(pick(domain,'Правильно понимаю: вам нужен рост на 15%, а для нас приемлемо не больше 5%? Давайте сверим, что ещё входит в условия.','Я рассчитываю на ведущую роль и рост на 15%. Какие ограничения по бюджету и срокам есть у команды?','Правильно понимаю: вы против переработок, а мне нужно показать клиенту ключевую часть через две недели? Давайте сверим, что входит в релиз.','Правильно понимаю: для вас главное — {goal}? Давайте сверим, что входит в предмет договорённости и какие у вас ограничения.'), 'Рамка разговора', 17, 9, 'Вы спокойно обозначили обе позиции и открыли пространство для уточнений.'), choice(pick(domain,'Наша позиция простая: мы готовы принять рост не больше 5%. Давайте от этого и отталкиваться.','Моя позиция: ведущая роль и плюс 15% к зарплате. Давайте от этого и отталкиваться.','Моя позиция: через две недели релиз должен быть у клиента. От этого и будем отталкиваться.','Наша позиция простая, и менять её мы не планируем. Давайте от неё и отталкиваться.'), 'Только своя позиция', 11, 2, 'Граница обозначена ясно, но позиция собеседника и его ограничения остались за кадром — сверки не получилось.'), choice('Моя позиция окончательная. От вас требуется только согласие.', 'Давление', 3, -16, 'Жёсткая фиксация позиции заставляет собеседника защищаться.')],
+ [choice(pick(domain,'Что сильнее влияет на цену? Поможет ли гарантированный объём, срок контракта или график оплаты?','Какие результаты, ответственность и сроки позволят вам обосновать повышение?','Что сильнее всего выматывает команду: объём, ночные деплои или правки в последний момент? Что помогло бы выдержать срок?','Что сильнее всего влияет на ваше решение: сроки, риски или ресурсы? Что помогло бы вам согласиться?'), 'Интересы', 19, 12, 'Открытый вопрос переводит разговор от заявленных позиций к интересам и ограничениям.'), choice('Расскажите подробнее, что для вас сейчас самое важное.', 'Уточнение', 13, 6, 'Полезный вопрос. Усильте его вариантами и проверяемыми критериями.'), choice('Ваши внутренние проблемы меня не касаются. Мне нужен результат.', 'Давление', 3, -18, 'Игнорирование ограничений снижает доверие и готовность искать решение.')],
+ [choice(pick(domain,'Предлагаю годовой контракт, гарантированный объём и ускоренную оплату в обмен на рост цены не более 5%.','Предлагаю ведущую роль сейчас и рост на 15% либо пересмотр через три месяца по согласованным KPI.','Предлагаю сократить релиз до трёх ключевых функций, подключить стажёра к тестам и дать команде два отгула после сдачи в обмен на срок по ключевой части.','Предлагаю пакет: мы берём на себя часть рисков и фиксируем сроки, а взамен просим условия, которые обсудили. Это закрывает и вашу цель: {goal}.'), 'Взаимный обмен', 19, 10, 'Вы собрали пакет условий и связали уступки со встречной ценностью.'), choice(pick(domain,'Можем согласиться на 10%, если это упростит решение.','Согласен на небольшую прибавку, детали можно обсудить потом.','Давайте без отгулов, а потом я постараюсь что-нибудь компенсировать.','Ладно, в этом вопросе уступим, а детали обсудим потом.'), 'Односторонний компромисс', 11, 3, 'Компромисс возможен, но уступка без встречного условия ослабляет позицию.'), choice('Это моё последнее предложение. Обсуждать больше нечего.', 'Давление', 3, -20, 'Жёсткая позиция без аргументов блокирует совместный поиск.')],
+ [choice(pick(domain,'Понимаю риск по объёму. Давайте добавим квартальный коридор и пересмотр цены, если объём отклонится больше чем на 10%.','Понимаю риск бюджета. Давайте ограничим пилот тремя месяцами и заранее согласуем измеримые критерии результата.','Понимаю риск по качеству. Давайте заморозим код за три дня до релиза, а если критичных багов больше пяти, перенесём вторую часть.','Понимаю ваш риск. Давайте добавим контрольную точку: пилотный этап и пересмотр условий, если согласованные показатели не будут достигнуты.'), 'Работа с риском', 17, 10, 'Вы признали возражение и предложили механизм, который снижает риск собеседника.'), choice('Какая часть предложения вызывает у вас больше всего сомнений?', 'Диагностика возражения', 12, 6, 'Вы уточняете причину сомнений, но следующему ходу понадобится конкретное решение.'), choice('Вы просто ищете повод отказать. Это несерьёзно.', 'Обесценивание', 2, -19, 'Обесценивание возражения усиливает сопротивление и разрушает рабочий контакт.')],
+ [choice(pick(domain,'Зафиксируем цену, объём, коридор отклонения и сроки поставок письменно. Сверим проект договора в пятницу?','Зафиксируем роль, KPI, ресурсы и дату пересмотра через три месяца. Я отправлю итоги встречи сегодня.','Зафиксируем объём релиза, дату заморозки кода, отгулы и ответственного за тесты. Я отправлю план команде и клиенту сегодня.','Зафиксируем условия, ответственных и сроки письменно. Я отправлю протокол встречи сегодня — подтвердите, всё ли верно?'), 'Фиксация', 18, 10, 'Конкретные условия, ответственный и срок превращают разговор в проверяемую договорённость.'), choice('Отлично, в целом договорились. Детали согласуем по почте.', 'Размытая фиксация', 9, 1, 'Звучит как итог, но без конкретных условий, ответственного и срока договорённость легко «расползётся».'), choice('Отлично, считаю, что вы согласились со всем.', 'Допущение', 3, -10, 'Проверьте согласие собеседника, прежде чем объявлять о договорённости.')]
  ][Math.max(0, Math.min(stage, SESSION_STAGE_COUNT - 1))];
  // Near collapse the neutral option turns into a de-escalation branch.
  return currentTension >= RECOVERY_TENSION ? [options[0], recoveryChoice(), options[2]] : options;
@@ -314,12 +376,21 @@ export function respond(config: Config, stage: number, c: Choice, trust: number)
  // Each stage branches on the quality of the move: a strong move opens the deal, a weak one costs leverage, pressure hardens the opponent.
  // Free text is only «hostile» on a real conflict; a merely weak phrasing gets the weak reply.
  const branch=c.trust<=(c.freeText?-10:-1)?'hostile':c.points>=15?'strong':'weak';
- const line=REPLIES[config.domain][current][branch];
+ const line=fillTemplate((usesStory(config)?REPLIES[config.domain]:GENERIC_REPLIES)[current][branch],config);
  // A free-text reply that touches a hidden interest makes the opponent open up about it.
- const revealed=c.freeText&&branch!=='hostile'&&c.interests?.length?' '+INTERESTS[config.domain].find(item=>item.id===c.interests![0])!.reveal:'';
+ const revealed=c.freeText&&branch!=='hostile'&&c.interests?.length?' '+(interestsFor(config).find(item=>item.id===c.interests![0])?.reveal??''):'';
  return (branch==='hostile'?'':prefix)+line+(current===2&&branch==='strong'?` Мой приоритет: ${config.goal.toLowerCase()}.`:'')+revealed;
 }
 type ReplyBranches={strong:string;weak:string;hostile:string};
+/** Opponent replies for a custom topic: gender-neutral, with {topic}, {role} and {goal}. */
+const GENERIC_REPLIES:ReplyBranches[]=[
+ {strong:'Спасибо, что начали с этого. Для меня важно {goal}, и мне интересно найти вариант, который устроит обе стороны.',weak:'К цифрам рано. Сначала разберёмся, что на самом деле стоит за вопросом «{topic}».',hostile:'Уйти — ваше право, но это не ускорит решение. Если хотите договориться, давайте без ультиматумов.'},
+ {strong:'Да, так и есть. Кроме этого, мне важно понимать сроки, ресурсы и то, какие риски остаются на моей стороне.',weak:'Это ваша позиция. У меня другая, и пока вы не спросили почему, сблизиться сложно.',hostile:'Если позиция окончательная, обсуждать нечего. Тогда и моя позиция не изменится.'},
+ {strong:'Хороший вопрос. Больше всего на моё решение влияют риски и сроки: если их снять, у нас появится пространство для договорённости.',weak:'Мне важно, чтобы решение было обоснованным. Конкретнее скажу, когда пойму, что вы готовы предложить.',hostile:'Мои ограничения — часть задачи, а не помеха. Если их игнорировать, договориться не получится.'},
+ {strong:'Такой пакет уже выглядит сбалансированно. Уточним, как вы гарантируете свою часть и что будет, если что-то пойдёт не по плану.',weak:'Пока я вижу уступку без встречных обязательств. Что вы готовы дать взамен?',hostile:'Последнее предложение без обмена — это не переговоры. На таких условиях согласия не будет.'},
+ {strong:'Контрольная точка и понятный критерий снимают моё главное опасение. С этим можно двигаться дальше.',weak:'Главное опасение остаётся: результат нельзя проверить. Нужен механизм, а не обещание.',hostile:'Я не ищу повод — я называю реальный риск. Если он вам неинтересен, закрывать договорённость не на чем.'},
+ {strong:'Договорились. Жду протокол: подтвержу пункты и запущу согласование со своей стороны.',weak:'В целом да, но без конкретных пунктов и сроков это легко затянется.',hostile:'Стоп, согласия по всем пунктам пока нет. Давайте сначала сверим их.'},
+];
 const REPLIES:Record<Domain,ReplyBranches[]>={
  supplier:[
   {strong:'Я тоже заинтересован сохранить отношения. Но рост себестоимости реален, поэтому нам понадобится предметный обмен условиями.',weak:'Скидку? Мы только что сказали, что издержки выросли. Прежде чем торговаться, давайте поймём, что вообще можно сохранить.',hostile:'Уйти — ваше право, но переход к другому поставщику тоже стоит денег и времени. Если хотите договориться, давайте без ультиматумов.'},

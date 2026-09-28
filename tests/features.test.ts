@@ -13,8 +13,10 @@ const path = (domain: Domain, pick: (stage: number) => number) => {
 };
 const session = (domain: Domain, turns: Turn[]) => ({ config: defaults[domain], turns, started: 1_700_000_000_000, ended: 1_700_000_600_000, stageCount: 6 });
 
-test('the case library has the five requested presets and each survives export → import', () => {
+test('the case library has the two customer cases plus five presets, each surviving export → import', () => {
   const expected: Array<[string, Domain, string, string]> = [
+    ['Инвестиции: размещение завода в ОЭЗ «Алабуга»', 'supplier', 'Жёсткий', 'Эксперт'],
+    ['Алабуга Политех: привлечение инженера-наставника', 'career', 'Сдержанный', 'Продвинутый'],
     ['Закупки: рост цен сырья на 15%', 'supplier', 'Сдержанный', 'Продвинутый'],
     ['Карьера: защита грейда и зарплаты', 'career', 'Дружелюбный', 'Базовый'],
     ['IT-проект: горящий релиз клиента', 'team', 'Жёсткий', 'Эксперт'],

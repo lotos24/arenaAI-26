@@ -114,17 +114,17 @@ try:
         click_js('.options button:first-child')
     button('Посмотреть разбор');has('Общий язык найден.')
     size(390,844)
-    button('Настройки');has('Получить API-ключ')
+    button('Настройки');has('On-Device нейросеть')
     assert js('return [...document.querySelectorAll(".setting-card")].every(e=>e.scrollWidth<=e.clientWidth+1)'), 'settings text overflow'
-    assert js('return document.querySelector(".api-actions a").href')=='https://platform.openai.com/api-keys'
-    assert js('return document.querySelector("[aria-label=\\"API-ключ OpenAI\\"]").type')=='password'
+    assert js('return !document.querySelector("[aria-label*=\\"API\\"]")'),'no API key fields'
+    assert js('return !!document.querySelector("[aria-label=\\"Использовать локальную нейросеть\\"]") || document.body.innerText.includes("WebGPU недоступен")'),'local model toggle or WebGPU notice'
     assert js('return document.querySelector("[aria-label=\\"Озвучка\\"]").getAttribute("aria-checked")')=='false','voice must be off by default'
     assert js('return document.querySelector(".app-root").classList.contains("theme-dark")')
     click('[aria-label="Тёмная тема"]');assert not js('return document.querySelector(".app-root").classList.contains("theme-dark")')
     click('[aria-label="Тёмная тема"]');assert js('return document.querySelector(".app-root").classList.contains("theme-dark")');assert js('return getComputedStyle(document.querySelector(".app-root")).backgroundColor')=='rgb(16, 23, 19)'
     click('[aria-label="Спокойный режим"]');assert js('return document.querySelector("[aria-label=\\"Спокойный режим\\"]").getAttribute("aria-checked")')=='true'
     req(p+'/refresh',{});time.sleep(1);button('Настройки');assert js('return document.querySelector(".app-root").classList.contains("theme-dark")');assert js('return document.querySelector("[aria-label=\\"Спокойный режим\\"]").getAttribute("aria-checked")')=='true'
-    has('Озвучка');has('GPT-5.6 Sol')
+    has('Озвучка');has('Qwen2.5')
     fill('.teacher-login-form label:first-child input','Анна Сергеевна')
     fill('.teacher-login-form label:last-of-type input','2468')
     button('Создать аккаунт');has('Открыть кабинет');button('Открыть кабинет');has('Результаты группы')

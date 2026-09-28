@@ -1,4 +1,5 @@
 import { Config, defaults } from './engine';
+import { SCENARIO_PRESETS } from './scenario-library';
 
 export type RankIcon = 'sprout' | 'user' | 'badge' | 'medal' | 'star' | 'crown' | 'landmark' | 'building';
 
@@ -28,11 +29,15 @@ export function rankProgress(xp:number) {
 }
 
 export type MapLevel = {
-  id:string;scope:'Городские'|'Региональные'|'Федеральные'|'Международные';title:string;subtitle:string;
+  id:string;scope:'ОЭЗ «Алабуга»'|'Городские'|'Региональные'|'Федеральные'|'Международные';title:string;subtitle:string;
   requiredRank:number;config:Config;
 };
 
+const preset=(id:string)=>SCENARIO_PRESETS.find(item=>item.id===id)!.config;
 export const mapLevels: MapLevel[] = [
+  // Customer cases are open from the start so they can be shown right away.
+  {id:'alabuga-polytech',scope:'ОЭЗ «Алабуга»',title:'Алабуга Политех',subtitle:'Контракт инженера-наставника',requiredRank:0,config:preset('alabuga-polytech')},
+  {id:'alabuga-investment',scope:'ОЭЗ «Алабуга»',title:'Завод в ОЭЗ «Алабуга»',subtitle:'Вход резидента и корпус «Синергия»',requiredRank:0,config:preset('alabuga-investment')},
   {id:'city-career',scope:'Городские',title:'Новая роль',subtitle:'Разговор с руководителем',requiredRank:0,config:{...defaults.career,difficulty:'Базовый',tone:'Дружелюбный',topic:'Повышение до ведущего специалиста'}},
   {id:'city-supply',scope:'Городские',title:'Локальный поставщик',subtitle:'Первый коммерческий контракт',requiredRank:1,config:{...defaults.supplier,difficulty:'Базовый',tone:'Сдержанный',topic:'Контракт с локальным поставщиком'}},
   {id:'region-network',scope:'Региональные',title:'Региональная сеть',subtitle:'Объём, цена и сроки',requiredRank:2,config:{...defaults.supplier,difficulty:'Продвинутый',tone:'Сдержанный',topic:'Поставки для региональной сети'}},
