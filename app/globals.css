@@ -323,3 +323,30 @@ select{appearance:none;padding-right:46px!important;background-image:linear-grad
 .theme-dark .model-tiers button.active{background:#1f2e24}
 @media(max-width:700px){.model-tiers{grid-template-columns:1fr}}
 .app-root>.achievement-toast{height:auto}
+/* Every block of the settings scroll region keeps its natural height (a shrunk card spilled under its neighbours). */
+.settings-body>*{flex:0 0 auto}
+.settings-body>.local-ai-card{display:grid;grid-template-columns:46px minmax(0,1fr);align-items:start}
+.settings-body>.local-ai-card>div{min-width:0}
+.local-ai-card p{max-width:760px}
+@media(max-width:700px){.settings-body>.local-ai-card{grid-template-columns:34px minmax(0,1fr)}}
+/* Teacher cabinet: when analytics and the import form do not fit, the whole cabinet scrolls instead of spilling below the screen. */
+.teacher-dashboard{overflow-y:auto;overscroll-behavior:contain;padding-right:4px}
+.teacher-dashboard>*{flex-shrink:0}
+.teacher-dashboard>.student-roster{flex:1 0 auto;overflow:visible}
+/* Review on narrow phones: the heading and the XP card share 345px without overflow. */
+.results .heading>div:first-child{min-width:0}
+@media(max-width:420px){.results .heading{gap:10px}.results .heading h1{font-size:26px}.xp-burst{width:150px;padding-left:44px}}
+/* Review footer on medium widths: a short memo caption keeps four items on one line. */
+@media(max-width:960px) and (min-width:701px){.memo-button .short-label[data-short]{font-size:0}.memo-button .short-label[data-short]::after{content:attr(data-short);font-size:12px}}
+/* Narrow session sidebar: the tension title may wrap instead of overflowing. */
+.session-sidebar .tension-title{flex-wrap:wrap;row-gap:2px}
+@media(max-width:360px){.results .heading{flex-wrap:wrap}.results .heading>div:first-child{flex-basis:100%}.xp-burst{width:100%;min-height:60px}}
+@media(max-width:420px){.group-analytics{grid-template-columns:1fr;gap:6px}.analytics-tile{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:8px 11px}.analytics-tile strong{margin:0;text-align:right;font-size:12px}}
+/* Long case titles (customer cases) must not overflow narrow modals and headings. */
+.modal h2,.session-heading h1,.results .heading h1{overflow-wrap:break-word;hyphens:auto}
+@media(max-width:360px){.modal h2{font-size:21px}.modal{padding:28px 20px}}
+.section-label{min-width:0}
+.section-label>span{white-space:nowrap}
+/* Competency bars read better in at most two columns next to the radar. */
+.competency-list{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(max-width:700px){.competency-list{grid-template-columns:1fr}}
