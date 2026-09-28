@@ -104,3 +104,51 @@ select{appearance:none;padding-right:46px!important;background-image:linear-grad
 @media(prefers-reduced-motion:reduce){.thinking-dots i{animation:none}.custom-select-popover,.custom-select-option{transition:none!important}}
 .finale-line{display:flex;align-items:flex-start;gap:8px;flex-shrink:0;margin:-8px 0 0;padding:9px 12px;border-left:2px solid #8aab72;border-radius:4px;background:#8aab7214;font-size:12px;line-height:1.55;color:var(--muted)}.finale-line>svg{margin-top:2px;color:#8aab72}@media(max-width:700px){.finale-line{font-size:10px;padding:6px 10px}.finale-line>span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}}
 @media(max-height:760px) and (max-width:700px){.results .heading p{display:none}}
+/* Issue #1: the ≤900px rule above narrowed the mobile bottom bar to 76px; the bar must span the screen. */
+@media(max-width:700px){.sidebar{width:100%}}
+/* Constructor: the start-atmosphere meter reads as a padded card instead of a cramped strip. */
+.constructor .context-preview{gap:24px;align-items:stretch}
+.constructor .context-preview>div>.eyebrow{margin-bottom:12px}
+.constructor .context-preview .tension-meter{padding:18px 20px 16px;border:1px solid var(--line);border-radius:12px;background:#fffef9b3}
+.constructor .context-preview .tension-track{margin-top:14px}
+.constructor .context-preview .tension-caption{margin-top:11px}
+.constructor .context-preview>p{align-self:center;padding:4px 2px}
+.theme-dark .constructor .context-preview .tension-meter{background:#151f19e8}
+@media(max-width:700px){.constructor .context-preview{gap:14px}.constructor .context-preview .tension-meter{padding:14px 16px 13px}}
+/* First-visit hint about voice input, anchored above the composer. */
+.composer{position:relative}
+.mic-hint{flex-shrink:0;margin:0 14px 12px;display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-radius:12px;background:#fffef9;border:1px solid #cfdcc2;box-shadow:0 12px 40px #1f382433;font-size:12px;line-height:1.55;color:var(--ink)}
+.mic-hint>svg{color:#6f9360;margin-top:2px}
+.mic-hint strong{display:block;margin-bottom:3px;font-size:13px}
+.mic-hint button{margin-left:auto;align-self:center;background:var(--green);color:#f9fbed;border-radius:8px;padding:8px 12px;font-size:12px;white-space:nowrap}
+.theme-dark .mic-hint{background:#1b2820;border-color:#3b5243;color:#dae5dc}
+.theme-dark .mic-hint button{color:#142018}
+.voice-button.hinted{box-shadow:0 0 0 3px #8aab7266;animation:mic-glow 1.6s ease-in-out infinite}
+@keyframes mic-glow{50%{box-shadow:0 0 0 7px #8aab7218}}
+@media(max-width:700px){.mic-hint{margin:0 8px 8px;padding:11px 12px;gap:10px;font-size:11px}.mic-hint strong{font-size:12px}.mic-hint button{padding:7px 10px;font-size:11px}}
+/* Answer timer under high tension. */
+.composer-heading>.answer-timer{display:inline-flex;align-items:center;gap:5px;font-size:12px;letter-spacing:0;color:#c9774f;font-variant-numeric:tabular-nums;font-weight:600}
+.composer-heading>.answer-timer.urgent{color:#d85c4a;animation:timer-pulse 1s ease-in-out infinite}
+@keyframes timer-pulse{50%{opacity:.5}}
+.answer-timer-track{height:3px;border-radius:3px;background:#e9eee0;overflow:hidden;margin:-4px 0 10px}
+.answer-timer-track>i{display:block;height:100%;background:#d0864f;transition:width 1s linear}
+.theme-dark .answer-timer-track{background:#2a3830}
+.quiet .answer-timer.urgent,.quiet .voice-button.hinted{animation:none}
+@media(prefers-reduced-motion:reduce){.answer-timer.urgent,.voice-button.hinted{animation:none}}
+/* Hidden interests in the session sidebar and in the review. */
+.interest-panel{border:1px solid var(--line);border-radius:12px;padding:15px 17px;background:#fffef9b3;flex-shrink:0}
+.interest-panel>div{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#718364;margin-bottom:11px}
+.interest-panel>div>strong{font-weight:500;font-size:15px;color:#6f9360;font-variant-numeric:tabular-nums}
+.interest-panel ul,.interest-review ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.interest-panel li{display:flex;gap:8px;align-items:flex-start;font-size:11px;line-height:1.45;color:var(--muted)}
+.interest-panel li>svg{margin-top:2px}
+.interest-panel li.found{color:var(--ink)}
+.interest-panel li.found>svg,.interest-review li.found>svg{color:#6f9360}
+.theme-dark .interest-panel{background:#151f19e8}
+.interest-review>p{font-size:12px;line-height:1.7;color:var(--muted);margin:14px 0 16px}
+.interest-review li{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border:1px solid var(--line);border-radius:10px}
+.interest-review li>svg{margin-top:2px;color:var(--muted)}
+.interest-review li strong{display:block;font-size:13px;font-weight:500}
+.interest-review li small{display:block;font-size:11px;color:var(--muted);margin-top:4px;line-height:1.5}
+/* Very short phones: the review scrolls inside the screen instead of collapsing to a few pixels. */
+@media(max-height:640px) and (max-width:700px){.results{overflow-y:auto;overscroll-behavior:contain}.results .review-panel{flex:0 0 auto;min-height:230px}}

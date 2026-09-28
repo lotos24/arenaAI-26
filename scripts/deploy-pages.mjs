@@ -5,7 +5,9 @@ import { spawnSync } from 'node:child_process';
 
 const project = process.cwd();
 function run(command, args, cwd = project, capture = false, env = process.env) {
-  const result = spawnSync(command, args, { cwd, env, encoding: 'utf8', stdio: capture ? 'pipe' : 'inherit' });
+  // Node 20.12+ refuses to spawn .cmd files on Windows without a shell (CVE-2024-27980); arguments here are fixed strings.
+  const shell = process.platform === 'win32' && command.endsWith('.cmd');
+  const result = spawnSync(command, args, { cwd, env, encoding: 'utf8', stdio: capture ? 'pipe' : 'inherit', shell });
   if (result.status !== 0) throw new Error(`${command} ${args.join(' ')} failed`);
   return result.stdout?.trim() || '';
 }
