@@ -36,9 +36,9 @@ export const mapLevels: MapLevel[] = [
   {id:'city-career',scope:'Городские',title:'Новая роль',subtitle:'Разговор с руководителем',requiredRank:0,config:{...defaults.career,difficulty:'Базовый',tone:'Дружелюбный',topic:'Повышение до ведущего специалиста'}},
   {id:'city-supply',scope:'Городские',title:'Локальный поставщик',subtitle:'Первый коммерческий контракт',requiredRank:1,config:{...defaults.supplier,difficulty:'Базовый',tone:'Сдержанный',topic:'Контракт с локальным поставщиком'}},
   {id:'region-network',scope:'Региональные',title:'Региональная сеть',subtitle:'Объём, цена и сроки',requiredRank:2,config:{...defaults.supplier,difficulty:'Продвинутый',tone:'Сдержанный',topic:'Поставки для региональной сети'}},
-  {id:'region-team',scope:'Региональные',title:'Ключевой специалист',subtitle:'Удержание и новая ответственность',requiredRank:3,config:{...defaults.career,difficulty:'Продвинутый',tone:'Жёсткий',topic:'Удержание ключевого специалиста'}},
+  {id:'region-team',scope:'Региональные',title:'Горящий спринт',subtitle:'Срок клиента и усталость команды',requiredRank:3,config:{...defaults.team,difficulty:'Продвинутый',tone:'Жёсткий',topic:'Срочный релиз для регионального клиента'}},
   {id:'federal-tender',scope:'Федеральные',title:'Федеральный тендер',subtitle:'Риски крупного контракта',requiredRank:4,config:{...defaults.supplier,difficulty:'Эксперт',tone:'Жёсткий',topic:'Условия федерального тендера'}},
-  {id:'federal-change',scope:'Федеральные',title:'Реорганизация',subtitle:'Роль в новой структуре',requiredRank:5,config:{...defaults.career,difficulty:'Эксперт',tone:'Сдержанный',topic:'Роль в федеральной реорганизации'}},
+  {id:'federal-release',scope:'Федеральные',title:'Кризисный релиз',subtitle:'Сроки против выгорания команды',requiredRank:5,config:{...defaults.team,difficulty:'Эксперт',tone:'Сдержанный',topic:'Релиз федерального проекта'}},
   {id:'global-contract',scope:'Международные',title:'Международный контракт',subtitle:'Стандарты и гарантии',requiredRank:6,config:{...defaults.supplier,difficulty:'Эксперт',tone:'Жёсткий',topic:'Международный контракт поставки'}},
   {id:'global-board',scope:'Международные',title:'Совет директоров',subtitle:'Стратегическая роль',requiredRank:7,config:{...defaults.career,difficulty:'Эксперт',tone:'Жёсткий',topic:'Переговоры с советом директоров'}},
 ];

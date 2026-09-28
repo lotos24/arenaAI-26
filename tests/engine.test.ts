@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {choices,defaults,evaluateText,outcome,respond,threshold,tension,tensionState,Domain,Config,Turn,stages} from '../lib/engine';
-for(const domain of ['supplier','career'] as Domain[]) test(`${domain}: cooperative and hostile paths diverge`,()=>{const config=defaults[domain];const good=stages.map((_,i)=>({...choices(domain,i)[0],reply:''}));assert.equal(outcome(config,good).won,true);assert.equal(outcome(config,good).score,100);const bad=stages.map((_,i)=>({...choices(domain,i)[i===0?1:2],reply:''}));assert.equal(outcome(config,bad).won,false);assert.ok(outcome(config,good).trust>outcome(config,bad).trust);assert.equal(outcome(config,good.slice(0,-1)).won,false);});
+for(const domain of ['supplier','career','team'] as Domain[]) test(`${domain}: cooperative and hostile paths diverge`,()=>{const config=defaults[domain];const good=stages.map((_,i)=>({...choices(domain,i)[0],reply:''}));assert.equal(outcome(config,good).won,true);assert.equal(outcome(config,good).score,100);const bad=stages.map((_,i)=>({...choices(domain,i)[i===0?1:2],reply:''}));assert.equal(outcome(config,bad).won,false);assert.ok(outcome(config,good).trust>outcome(config,bad).trust);assert.equal(outcome(config,good.slice(0,-1)).won,false);});
 test('configuration affects success threshold and replies',()=>{assert.ok(threshold({...defaults.supplier,difficulty:'Эксперт'})>threshold({...defaults.supplier,difficulty:'Базовый'}));const c=choices('supplier',2)[0];const config={...defaults.supplier,goal:'Снизить риски',tone:'Жёсткий' as const};assert.match(respond(config,2,c,70),/Перейдём к делу/);assert.match(respond(config,2,c,70),/снизить риски/);assert.match(respond(config,2,c,10),/остановим/)});
 test('free text distinguishes proposals, threats, insults, and vague replies',()=>{
  const proposal=evaluateText('Предлагаю контракт на год и объём в обмен на рост цены 5%.','supplier',3);
@@ -98,7 +98,7 @@ test('tone and difficulty both change the opening tension', () => {
  }
 });
 
-for (const domain of ['supplier', 'career'] as Domain[]) {
+for (const domain of ['supplier', 'career', 'team'] as Domain[]) {
  test(`${domain}: pressure raises tension and constructive replies lower it`, () => {
   const config = defaults[domain];
   for (let stage = 0; stage < stages.length; stage++) {
@@ -112,7 +112,7 @@ for (const domain of ['supplier', 'career'] as Domain[]) {
 }
 
 test('tension remains within 5–100 across every six-stage path', () => {
- for (const domain of ['supplier', 'career'] as Domain[]) {
+ for (const domain of ['supplier', 'career', 'team'] as Domain[]) {
   for (const tone of ['Дружелюбный', 'Сдержанный', 'Жёсткий'] as const) {
    for (const difficulty of ['Базовый', 'Продвинутый', 'Эксперт'] as const) {
     const config = {...defaults[domain], tone, difficulty};
