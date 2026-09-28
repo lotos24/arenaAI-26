@@ -94,7 +94,7 @@ try:
     button('Посмотреть разбор');has('Общий язык найден.');size(390,844);snap('results-mobile')
     button('Прогресс');has('Повышение до ведущего специалиста');has('Стажёр переговорщик')
     req(p+'/refresh',{});time.sleep(1);has('Общий язык найден.');button('Прогресс');has('Повышение до ведущего специалиста')
-    button('Конструктор');fits('.form-footer');assert js('return !!document.querySelector(".custom-select-trigger")'),'custom select missing';button('Протестировать');button('Начать переговоры')
+    button('Администратор / Конструктор');fits('.form-footer');assert js('return !!document.querySelector(".custom-select-trigger")'),'custom select missing';button('Протестировать');button('Начать переговоры')
     click('.session-controls .icon-button');has('ВАША ЗАДАЧА');button('Вернуться к разговору')
     draft='Понимаю ваши интересы. Давайте найдём решение вместе.'
     field=req(p+'/element',{'using':'css selector','value':'.input-row input'})
@@ -104,7 +104,7 @@ try:
     button('Прогресс');click('.history-item');button('Попробовать иначе');has('Новая практика заменит текущую')
     click('.modal .close');button('Арена');assert js('return document.querySelector(".input-row input").value')==draft,'history retry replaced active session'
     click('.send-button');assert js('return document.querySelector(".input-row input").value')=='','draft not cleared'
-    button('Конструктор')
+    button('Администратор / Конструктор')
     click('[aria-label="Сфера переговоров"]');click('[role="option"][data-value="career"]')
     button('Протестировать');button('Начать переговоры')
     for stage in range(6):

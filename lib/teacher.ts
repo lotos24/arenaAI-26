@@ -1,6 +1,6 @@
 import type { Session } from './store';
-import { outcome, tension } from './engine';
-import { sessionStageCount } from './store';
+import { outcome, sessionStageCount, tension } from './engine';
+import { rankForXp } from './progression';
 
 const LEARNER_KEY='arena-learner-v1';
 const ACCOUNT_KEY='arena-teacher-account-v1';
@@ -59,3 +59,15 @@ export function loadReports(){return read<StudentReport[]>(REPORTS_KEY,[]);}
 export function importReport(report:StudentReport){
   const reports=loadReports().filter(item=>!(item.learner===report.learner&&item.classCode===report.classCode));const next=[report,...reports].slice(0,100);write(REPORTS_KEY,next);return next;
 }
+
+/** Group summary for spreadsheets: «;» separator and a BOM so Excel opens Cyrillic correctly. */
+export function groupCsv(reports:StudentReport[]){
+  const cell=(value:string|number)=>{const text=String(value);return /[;"\n\r]/.test(text)?`"${text.replaceAll('"','""')}"`:text;};
+  const rows=reports.map(report=>{
+    const xp=report.sessions.reduce((sum,item)=>sum+item.score,0);const count=report.sessions.length;
+    const last=count?Math.max(...report.sessions.map(item=>item.ended)):0;
+    return [report.learner,report.classCode,count,count?Math.round(xp/count):0,xp,rankForXp(xp).title,count?Math.round(report.sessions.filter(item=>item.won).length/count*100):0,last?new Date(last).toLocaleDateString('ru-RU'):''];
+  });
+  return '﻿'+[['Ученик','Класс','Сессий','Средний балл','XP','Звание','Договорённостей, %','Последняя сессия'],...rows].map(row=>row.map(cell).join(';')).join('\r\n');
+}
+
