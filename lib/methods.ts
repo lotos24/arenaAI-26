@@ -1,4 +1,4 @@
-import { choices, Choice, Config, discoveredInterests, finale, INTERESTS, outcome, scenarios, sessionStageCount, stages, TechniqueId, tension, Turn } from './engine';
+import { choices, Choice, Config, discoveredInterests, finale, interestsFor, outcome, scenarios, sessionStageCount, stages, TechniqueId, tension, Turn } from './engine';
 
 /** Negotiation methods behind every move, so players learn to name what they do. */
 export type Technique = { id: TechniqueId; label: string; kind: 'method' | 'risk' };
@@ -50,7 +50,7 @@ export function harvardAssessment(config: Config, turns: Turn[]): HarvardItem[] 
   const attacks = turns.filter(isPersonalAttack).length;
   const repaired = turns.some(turn => turn.intent === 'repair');
   const known = discoveredInterests(turns).size;
-  const total = INTERESTS[config.domain].length;
+  const total = interestsFor(config).length;
   const positional = turns.filter(turn => techniqueFor(turn)?.id === 'positional').length;
   const best = (ids: TechniqueId[]) => Math.max(0, ...turns.filter(turn => ids.includes(techniqueFor(turn)?.id as TechniqueId)).map(turn => turn.points));
   const packagePoints = best(['harvardPackage']);
@@ -83,7 +83,7 @@ export function competencyProfile(history: SessionLike[]) {
   const empathy = average(finished.map(session => clamp01((session.turns[0]?.points ?? 0) / 17) * (session.turns.some(isPersonalAttack) ? .5 : 1)));
   const spin = average(finished.map(session => {
     const questions = session.turns.filter(turn => turn.intent === 'question' || ['harvardInterests', 'spinProblem', 'spinSituation'].includes(techniqueFor(turn)?.id ?? '')).length;
-    return .6 * discoveredInterests(session.turns).size / INTERESTS[session.config.domain].length + .4 * clamp01(questions / 2);
+    return .6 * discoveredInterests(session.turns).size / interestsFor(session.config).length + .4 * clamp01(questions / 2);
   }));
   const packages = average(finished.filter(session => session.turns[3]).map(session => clamp01(session.turns[3].points / 19)));
   const stress = average(finished.map(session => {
@@ -126,8 +126,8 @@ export function sessionMemo(session: SessionLike) {
     `Итог: ${verdict}. ${finale(config, result, turns.length >= stageTotal)}`,
     `Результат: ${result.score}/100 · Доверие: ${result.trust}% · Напряжённость: ${tension(config, turns)}% · Этапов: ${turns.length}/${stageTotal}`,
     '',
-    `Скрытые интересы собеседника (${known.size}/${INTERESTS[config.domain].length}):`,
-    ...INTERESTS[config.domain].map(item => known.has(item.id) ? `✓ ${item.label}` : `✗ ${item.label} — ${item.hint}`),
+    `Скрытые интересы собеседника (${known.size}/${interestsFor(config).length}):`,
+    ...interestsFor(config).map(item => known.has(item.id) ? `✓ ${item.label}` : `✗ ${item.label} — ${item.hint}`),
     '',
     'Оценка по Гарвардскому методу:',
     ...harvardAssessment(config, turns).map(item => `${STATUS_MARK[item.status]} ${item.label}: ${item.detail}`),
@@ -136,6 +136,16 @@ export function sessionMemo(session: SessionLike) {
     ...(strengths.length ? strengths.map(({ turn, index }) => `• Этап «${stages[index]}»: ${label(turn)}.`) : ['• Пока нет ходов на высокий балл — начните с признания позиции собеседника.']),
     '',
     'Что улучшить:',
-    ...(growth.length ? growth.map(({ turn, index }) => `• Этап «${stages[index]}»: ${turn.feedback} Попробуйте: «${choices(config.domain, index)[0].text}»`) : ['• Все ходы сильные — повторите сценарий на уровне сложности выше.']),
+    ...(growth.length ? growth.map(({ turn, index }) => `• Этап «${stages[index]}»: ${turn.feedback} Попробуйте: «${choices(config, index)[0].text}»`) : ['• Все ходы сильные — повторите сценарий на уровне сложности выше.']),
   ].join('\n');
 }
+
+/** Coach hints per stage: the method to apply, never the ready-made answer. */
+export const COACH_HINTS: Array<{ method: string; text: string }> = [
+  { method: 'Эмпатия и контакт', text: 'Признайте позицию собеседника своими словами и назовите общую цель. К цифрам пока рано.' },
+  { method: 'SPIN: Ситуация', text: 'Сверьте позиции обеих сторон и уточните рамки: что для собеседника приемлемо, а что нет.' },
+  { method: 'SPIN: Проблема · Гарвард: интересы', text: 'Задайте открытый вопрос о причинах и ограничениях («что сильнее всего влияет…?»). Ищите интерес за позицией.' },
+  { method: 'Гарвард: пакетный обмен', text: 'Свяжите два-три условия: что вы даёте и что просите взамен. Уступка без встречной ценности ослабляет позицию.' },
+  { method: 'Гарвард: объективные критерии', text: 'Назовите риск собеседника и предложите проверяемый механизм: пилот, коридор, KPI или дату пересмотра.' },
+  { method: 'Фиксация договорённости', text: 'Перечислите условия, ответственного и срок, затем проверьте согласие, прежде чем объявлять итог.' },
+];

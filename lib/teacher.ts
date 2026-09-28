@@ -1,5 +1,6 @@
 import type { Session } from './store';
-import { outcome, sessionStageCount, tension } from './engine';
+import { choices, outcome, sessionStageCount, stages, tension } from './engine';
+import { competencyProfile } from './methods';
 import { rankForXp } from './progression';
 
 const LEARNER_KEY='arena-learner-v1';
@@ -9,8 +10,8 @@ const REPORTS_KEY='arena-teacher-reports-v1';
 
 export type LearnerProfile={name:string;classCode:string};
 type TeacherAccount={name:string;salt:string;hash:string};
-export type StudentResult={id:string;topic:string;difficulty:string;score:number;trust:number;tension:number;won:boolean;ended:number};
-export type StudentReport={version:1;id:string;learner:string;classCode:string;generatedAt:number;sessions:StudentResult[]};
+export type StudentResult={id:string;topic:string;difficulty:string;score:number;trust:number;tension:number;won:boolean;ended:number;stages?:number[]};
+export type StudentReport={version:1;id:string;learner:string;classCode:string;generatedAt:number;sessions:StudentResult[];competencies?:Record<string,number|null>};
 
 const fallbackLearner: LearnerProfile={name:'Ученик',classCode:'ARENA-01'};
 
@@ -42,8 +43,10 @@ export function logoutTeacher(){sessionStorage.removeItem(SESSION_KEY);}
 export function reportFromHistory(profile:LearnerProfile,history:Session[]):StudentReport {
   return {version:1,id:crypto.randomUUID(),learner:profile.name,classCode:profile.classCode,generatedAt:Date.now(),sessions:history.filter(item=>item.ended).map(item=>{
     const result=outcome(item.config,item.turns,sessionStageCount(item));
-    return {id:item.id,topic:item.config.topic,difficulty:item.config.difficulty,score:result.score,trust:result.trust,tension:tension(item.config,item.turns),won:result.won,ended:item.ended||item.started};
-  })};
+    // Share of the best possible points per stage: lets the teacher see which stage the group loses.
+    const stagesDone=item.turns.map((turn,index)=>Math.round(turn.points/Math.max(...choices(item.config.domain,index).map(option=>option.points))*100)/100);
+    return {id:item.id,topic:item.config.topic,difficulty:item.config.difficulty,score:result.score,trust:result.trust,tension:tension(item.config,item.turns),won:result.won,ended:item.ended||item.started,stages:stagesDone};
+  }),competencies:Object.fromEntries(competencyProfile(history).items.map(item=>[item.id,item.value]))};
 }
 export function encodeReport(report:StudentReport){
   const bytes=new TextEncoder().encode(JSON.stringify(report));let binary='';bytes.forEach(byte=>binary+=String.fromCharCode(byte));return btoa(binary).replaceAll('+','-').replaceAll('/','_').replaceAll('=','');
@@ -52,7 +55,9 @@ export function decodeReport(code:string):StudentReport {
   try {
     const normalized=code.trim().replaceAll('-','+').replaceAll('_','/');const binary=atob(normalized);const bytes=Uint8Array.from(binary,char=>char.charCodeAt(0));const parsed=JSON.parse(new TextDecoder().decode(bytes)) as StudentReport;
     if(parsed.version!==1||typeof parsed.learner!=='string'||typeof parsed.classCode!=='string'||!Array.isArray(parsed.sessions)||parsed.sessions.some(item=>!item||typeof item.id!=='string'||typeof item.topic!=='string'||typeof item.score!=='number'||typeof item.trust!=='number'||typeof item.tension!=='number'||typeof item.won!=='boolean'||typeof item.ended!=='number'))throw new Error();
-    return {...parsed,learner:parsed.learner.slice(0,60),classCode:parsed.classCode.slice(0,24),sessions:parsed.sessions.slice(0,50)};
+    const sessions=parsed.sessions.slice(0,50).map(item=>({...item,stages:Array.isArray(item.stages)&&item.stages.length<=6&&item.stages.every(value=>typeof value==='number'&&value>=0&&value<=1)?item.stages:undefined}));
+    const competencies=parsed.competencies&&typeof parsed.competencies==='object'?Object.fromEntries(Object.entries(parsed.competencies).filter(([,value])=>value===null||(typeof value==='number'&&value>=0&&value<=100)).slice(0,10)):undefined;
+    return {...parsed,learner:parsed.learner.slice(0,60),classCode:parsed.classCode.slice(0,24),sessions,competencies};
   } catch { throw new Error('Код отчёта не распознан. Скопируйте его у ученика целиком.'); }
 }
 export function loadReports(){return read<StudentReport[]>(REPORTS_KEY,[]);}
@@ -71,3 +76,15 @@ export function groupCsv(reports:StudentReport[]){
   return '﻿'+[['Ученик','Класс','Сессий','Средний балл','XP','Звание','Договорённостей, %','Последняя сессия'],...rows].map(row=>row.map(cell).join(';')).join('\r\n');
 }
 
+
+const COMPETENCY_LABELS:Record<string,string>={empathy:'Эмпатия и контакт',spin:'Исследование интересов (SPIN)',package:'Пакетные решения',stress:'Стресс-менеджмент',closing:'Фиксация договорённостей'};
+/** HR summary of a cohort: the weakest dialogue stage, share of collapses and the weakest competency. */
+export function groupAnalytics(reports:StudentReport[]){
+  const sessions=reports.flatMap(report=>report.sessions);
+  const perStage=stages.map((label,index)=>{const values=sessions.map(item=>item.stages?.[index]).filter((value):value is number=>typeof value==='number');return {index,label,count:values.length,percent:values.length?Math.round(values.reduce((sum,value)=>sum+value,0)/values.length*100):null};});
+  const weakestStage=perStage.filter(item=>item.percent!==null).sort((a,b)=>(a.percent??0)-(b.percent??0))[0]??null;
+  const collapseRate=sessions.length?Math.round(sessions.filter(item=>item.tension>=100).length/sessions.length*100):null;
+  const competencyValues=Object.keys(COMPETENCY_LABELS).map(id=>{const values=reports.map(report=>report.competencies?.[id]).filter((value):value is number=>typeof value==='number');return {id,label:COMPETENCY_LABELS[id],value:values.length?Math.round(values.reduce((sum,value)=>sum+value,0)/values.length):null};});
+  const weakestCompetency=competencyValues.filter(item=>item.value!==null).sort((a,b)=>(a.value??0)-(b.value??0))[0]??null;
+  return {sessions:sessions.length,weakestStage,collapseRate,weakestCompetency};
+}

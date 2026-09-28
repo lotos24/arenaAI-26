@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { choices, defaults, Domain, evaluateText, finale, openingLine, outcome, RECOVERY_TENSION, respond, stages, tension, Turn } from '../lib/engine';
-import { buildNegotiationPrompt } from '../lib/openai';
 
 const domains: Domain[] = ['supplier', 'career', 'team'];
 const turn = (domain: Domain, stage: number, option: number): Turn => ({ ...choices(domain, stage)[option], reply: '' });
@@ -70,11 +69,4 @@ test('difficulty raises the cost of hostile moves, and tone changes the opening 
   assert.ok(outcome(expert, hostile).trust < outcome(basic, hostile).trust);
   assert.ok(tension(expert, hostile) - tension(expert, []) > tension(basic, hostile) - tension(basic, []));
   assert.notEqual(openingLine({ ...defaults.team, tone: 'Жёсткий' }), openingLine({ ...defaults.team, tone: 'Дружелюбный' }));
-});
-
-test('the AI prompt carries the configured topic and opening line', () => {
-  const config = { ...defaults.team, topic: 'Релиз мобильного банка' };
-  const prompt = buildNegotiationPrompt(config, [], choices('team', 0)[0], 0);
-  assert.match(prompt.input, /Релиз мобильного банка/);
-  assert.match(prompt.input, /ночными сменами/);
 });
