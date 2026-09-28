@@ -1,5 +1,5 @@
 import type { Choice, Config, Turn } from './engine';
-import { outcome, respond, scenarios, SESSION_STAGE_COUNT, stages, tension } from './engine';
+import { openingLine, outcome, respond, scenarios, SESSION_STAGE_COUNT, stages, tension } from './engine';
 
 export const DEFAULT_AI_MODEL = 'gpt-5.6-sol';
 
@@ -141,7 +141,9 @@ export function buildNegotiationPrompt(config: Config, turns: Turn[], choice: Ch
       'Сохраняй факты сценария и логику предыдущих реплик. Не соглашайся с тем, что ещё не обсуждалось, и не выдумывай достигнутую договорённость.',
     ].join(' '),
     input: [
+      `Тема переговоров: ${config.topic}.`,
       `Контекст: ${persona.brief}`,
+      `Твоя первая реплика: ${openingLine(config)}`,
       `Текущий этап: ${stages[safeStage]}.`,
       `История:\n${history}`,
       `Новая реплика игрока: ${choice.text}`,
