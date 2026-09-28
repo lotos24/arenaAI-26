@@ -1,12 +1,10 @@
 'use client';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Config, defaults, Turn, Choice, respond, outcome, SESSION_STAGE_COUNT } from './engine';
+import { Config, defaults, Turn, Choice, respond, outcome, SESSION_STAGE_COUNT, sessionStageCount } from './engine';
+export { sessionStageCount };
 export type PendingTurn = {choice:Choice;started:number};
 export type Session = {id:string; config:Config; turns:Turn[]; started:number; ended?:number; draft?:string; pending?:PendingTurn; stageCount?:number;learner?:string;classCode?:string};
-export function sessionStageCount(session: Session) {
- return session.stageCount ?? (session.ended ? Math.max(4,session.turns.length) : SESSION_STAGE_COUNT);
-}
 type Store = {config:Config; session:Session|null; history:Session[]; setConfig:(c:Config)=>void; setReplyDraft:(text:string)=>void; start:(c:Config,learner?:{name:string;classCode:string})=>void; beginAnswer:(c:Choice)=>void; resolveAnswer:(reply?:string)=>void; answer:(c:Choice,reply?:string)=>void; finish:()=>void; clearSession:()=>void};
 export const useArena = create<Store>()(persist((set,get)=>({
  config:defaults.supplier,session:null,history:[],setConfig:config=>set({config}),

@@ -152,3 +152,81 @@ select{appearance:none;padding-right:46px!important;background-image:linear-grad
 .interest-review li small{display:block;font-size:11px;color:var(--muted);margin-top:4px;line-height:1.5}
 /* Very short phones: the review scrolls inside the screen instead of collapsing to a few pixels. */
 @media(max-height:640px) and (max-width:700px){.results{overflow-y:auto;overscroll-behavior:contain}.results .review-panel{flex:0 0 auto;min-height:230px}}
+/* Short captions on phones: one text node for screen readers and tests, a shorter label on narrow screens. */
+@media(max-width:700px){.short-label[data-short]{font-size:0!important;line-height:0}.short-label[data-short]::after{content:attr(data-short);font-size:10px;line-height:1.2}.button .short-label[data-short]::after{font-size:12px}}
+/* Administrator: case library and scenario exchange. */
+.case-library{margin-bottom:26px}
+.case-library-head{display:flex;align-items:baseline;justify-content:space-between;gap:6px 14px;flex-wrap:wrap;margin-bottom:12px}
+.case-library-head h2{display:flex;align-items:center;gap:8px;font-size:15px}
+.case-library-head span{font-size:11px;color:var(--muted)}
+.case-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px}
+.case-card{display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left;padding:13px 14px;border-radius:11px;border:1px solid var(--line);background:#fffef9b3;color:var(--ink)}
+.case-card strong{font-size:12.5px;font-weight:600;line-height:1.35}
+.case-card small{font-size:11px;line-height:1.45;color:var(--muted)}
+.case-card>span{margin-top:auto;padding-top:2px;font-size:10px;letter-spacing:.3px;color:#6f9360}
+.case-card:hover:not(:disabled){border-color:#b8cba8}
+.case-card.active{border-color:#7fa36e;box-shadow:inset 0 0 0 1px #7fa36e;background:#eef4e6}
+.theme-dark .case-card{background:#151f19e8}
+.theme-dark .case-card.active{background:#1f2e24}
+.scenario-tools{margin-top:24px;padding-top:20px;border-top:1px solid var(--line);display:grid;grid-template-columns:1fr auto;gap:12px 20px;align-items:center}
+.scenario-tools h2{font-size:15px;margin-bottom:6px}
+.scenario-tools p{font-size:11px;line-height:1.6;color:var(--muted)}
+.scenario-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.scenario-import,.scenario-export,.scenario-tools>.inline-message{grid-column:1/-1}
+.scenario-import{display:flex;flex-direction:column;gap:10px}
+.scenario-tools textarea{width:100%;border:1px solid var(--line);border-radius:9px;padding:11px 12px;font:12px/1.5 ui-monospace,Consolas,monospace;background:#fafbf6;color:var(--ink);resize:vertical}
+.theme-dark .scenario-tools textarea{background:#101713}
+/* Phones: the case library becomes a swipeable row instead of a tall column. */
+@media(max-width:700px){.scenario-tools{grid-template-columns:1fr}.case-grid{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(210px,78%);overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:6px;scrollbar-width:thin}.case-card{padding:11px 12px;scroll-snap-align:start}}
+/* Negotiation frame in the briefing: goal, BATNA, ZOPA. */
+.negotiation-frame{margin:0 0 18px;padding:16px 18px;border:1px solid var(--line);border-radius:12px;background:#f4f7ee}
+.negotiation-frame .eyebrow{margin-bottom:10px}
+.negotiation-frame dl{margin:0;display:flex;flex-direction:column;gap:11px}
+.negotiation-frame dt{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:#5f7d52}
+.negotiation-frame dd{margin:4px 0 0;font-size:12px;line-height:1.6;color:var(--ink)}
+.negotiation-frame dd small{display:block;font-size:10px;line-height:1.5;color:var(--muted);margin-top:3px}
+.theme-dark .negotiation-frame{background:#1b2820}
+.theme-dark .negotiation-frame dt{color:#a8c58f}
+/* Method badges: green for negotiation methods, amber for risky tactics. */
+.technique-badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:600;letter-spacing:.1px;line-height:1.5;white-space:nowrap;border:1px solid #bcd0ad;background:#eef4e6;color:#4f7342}
+.technique-badge.risk{border-color:#e3c3a6;background:#fbf1e7;color:#a0603a}
+.theme-dark .technique-badge{background:#223128;border-color:#3b5243;color:#b4d09f}
+.theme-dark .technique-badge.risk{background:#33261d;border-color:#5d4331;color:#e2ad86}
+.options .technique-badge{display:flex;width:fit-content;margin-top:6px}
+.turn-feedback .technique-badge{margin:0 2px}
+.review-label>span{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.review-label .technique-badge{letter-spacing:0}
+/* Harvard assessment in the review. */
+.interest-review .harvard-list{margin:14px 0 22px}
+.harvard-list li.status-yes>svg{color:#6f9360}
+.harvard-list li.status-partial>svg{color:#c49a4f}
+.harvard-list li.status-no>svg{color:#d0674f}
+.interests-label{margin-top:4px}
+/* Review footer: the memo status gets its own row on phones. */
+@media(max-width:700px){.result-footer{flex-wrap:wrap}.result-footer>span:not(.memo-status){display:none}.result-footer>.memo-status{order:5;flex-basis:100%;text-align:center}}
+/* Competency matrix on the progress screen. */
+.competency-card{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:18px 20px;margin-bottom:14px}
+.competency-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:14px}
+.competency-head h2{font-size:16px}
+.competency-head span{font-size:11px;color:var(--muted)}
+.competency-empty{font-size:12px;line-height:1.6;color:var(--muted);margin:-4px 0 14px}
+.competency-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px 26px}
+.competency-title{display:flex;justify-content:space-between;gap:10px;align-items:baseline;font-size:12px}
+.competency-title strong{font-weight:500}
+.competency-title span{font-size:11px;color:#6f9360;white-space:nowrap;font-variant-numeric:tabular-nums}
+.competency.empty .competency-title span{color:var(--muted)}
+.competency-track{position:relative;height:6px;border-radius:6px;background:#e9eee0;margin:8px 0 6px}
+.competency-track>i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,#9fbb86,#5f8a52);transition:width .8s var(--ease)}
+.competency-track>b{position:absolute;left:80%;top:-3px;width:2px;height:12px;border-radius:1px;background:#c9a24f;opacity:.8}
+.competency small{display:block;font-size:10px;line-height:1.5;color:var(--muted)}
+.theme-dark .competency-track{background:#2a3830}
+.theme-dark .competency-card{background:#18221c}
+@media(max-width:700px){.competency-card{padding:14px 15px}.competency-list{grid-template-columns:1fr;gap:12px}}
+/* Teacher: CSV export next to the heading. */
+.teacher-heading-actions{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0}
+.teacher-heading-actions small{font-size:11px;color:var(--muted)}
+/* Review tabs: six stages plus the Harvard tab must fit without a scrollbar. */
+.review-tabs button{min-width:0}
+@media(min-width:1151px){.review-tabs button{min-width:92px}}
+@media(max-width:1150px) and (min-width:701px){.review-tabs button:not(.harvard-tab)>span:last-child{display:none}.review-tabs button.harvard-tab{flex:0 0 auto;padding-inline:12px}}
+@media(max-width:700px){.result-footer .button{padding:10px 12px;gap:7px}}
