@@ -16,8 +16,8 @@ test('the local prompt carries persona, goal, tone, stage, history and the scrip
   assert.match(system.content, /жёсткий/);
   assert.match(system.content, /только по-русски/);
   assert.match(user.content, /Установить контакт/);
-  assert.match(user.content, /Твоя реплика в ответ \(черновик\)/);
-  assert.match(user.content, /Контекст: собеседник только что сказал тебе/);
+  assert.match(user.content, /Суть твоего ответа/);
+  assert.match(user.content, /Собеседник только что сказал тебе/);
   assert.match(user.content, /Давайте обсудим тему «Релиз мобильного банка»/, 'the opening line of a custom topic is part of the context');
 });
 

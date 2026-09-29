@@ -42,6 +42,10 @@ def fits(selector):
     value=js('return [...document.querySelectorAll('+json.dumps(selector)+')].filter(e=>e.getBoundingClientRect().width).map(e=>{const r=e.getBoundingClientRect();return {text:e.textContent.slice(0,50),x:r.x,y:r.y,b:r.bottom,r:r.right,h:innerHeight,w:innerWidth}})')
     assert value,selector
     assert all(x['x']>=-1 and x['y']>=-1 and x['r']<=x['w']+1 and x['b']<=x['h']+1 for x in value),(selector,value)
+def reachable(selector):
+    # Answer options live in the scrollable chat: each fits the width, and the last one is fully visible after scrolling to the end.
+    value=js('const m=document.querySelector(".messages");m.scrollTop=m.scrollHeight;const q=m.getBoundingClientRect();const all=[...document.querySelectorAll('+json.dumps(selector)+')].filter(e=>e.getBoundingClientRect().width);if(!all.length)return null;const last=all[all.length-1].getBoundingClientRect();return all.every(e=>{const r=e.getBoundingClientRect();return r.left>=q.left-1&&r.right<=q.right+1})&&last.bottom<=q.bottom+1&&last.top>=q.top-1')
+    assert value,selector
     assert js('return document.documentElement.scrollHeight <= innerHeight+1 && document.documentElement.scrollWidth <= innerWidth+1'),'page overflow'
 def snap(name):
     open('/tmp/arena-'+name+'.png','wb').write(base64.b64decode(req(p+'/screenshot')))
@@ -72,7 +76,7 @@ try:
     assert js('return !!document.querySelector("[aria-label=\\"Озвучить первую реплику\\"]")')
     initial=int(js('return document.querySelector(".negotiation").dataset.tension'))
     for w,h in [(1366,768),(390,844),(375,667),(320,568)]:
-        size(w,h);fits('.options button, .input-row, .opponent')
+        size(w,h);fits('.input-row, .opponent');reachable('.options button')
         assert float(js('return parseFloat(getComputedStyle(document.querySelector(".options button")).fontSize)'))>=11,('small option text',w,h)
         assert float(js('return parseFloat(getComputedStyle(document.querySelector(".message")).fontSize)'))>=12,('small dialogue text',w,h)
         assert js('return document.querySelector(".conversation").scrollHeight <= document.querySelector(".conversation").clientHeight+1'),('conversation clipping',w,h)
@@ -109,7 +113,7 @@ try:
     button('Протестировать');button('Начать переговоры')
     for stage in range(6):
         for w,h in [(1366,768),(390,844),(375,667),(320,568)]:
-            size(w,h);fits('.options button, .input-row')
+            size(w,h);fits('.input-row');reachable('.options button')
             assert js('return document.querySelector(".conversation").scrollHeight<=document.querySelector(".conversation").clientHeight+1'),('career clipping',stage,w,h)
         click_js('.options button:first-child')
     button('Посмотреть разбор');has('Общий язык найден.')

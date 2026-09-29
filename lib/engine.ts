@@ -6,7 +6,11 @@ export type CustomScenario = { person?: string; brief?: string; opening?: string
 export type Config = { domain: Domain; topic: string; difficulty: 'Базовый' | 'Продвинутый' | 'Эксперт'; tone: 'Сдержанный' | 'Дружелюбный' | 'Жёсткий'; role: string; goal: string; custom?: CustomScenario };
 export type NegotiationIntent = 'scripted' | 'insult' | 'threat' | 'vague' | 'demand' | 'question' | 'proposal' | 'repair' | 'commitment' | 'silence';
 export type TechniqueId = 'empathy' | 'spinSituation' | 'spinProblem' | 'harvardInterests' | 'harvardPackage' | 'harvardCriteria' | 'closing' | 'batna' | 'batnaThreat' | 'positional' | 'pressure' | 'concession' | 'vague';
-export type Choice = { text: string; skill: string; points: number; trust: number; feedback: string; tension?: number; intent?: NegotiationIntent; interests?: string[]; freeText?: boolean; technique?: TechniqueId; timerLeft?: number; voice?: boolean };
+/** What a free-text move contains, so the opponent can answer the words and not only the score. */
+export type Cue = 'greeting' | 'interestQuestion' | 'checkQuestion' | 'question' | 'empathy' | 'proposal' | 'exchange' | 'concession';
+/** The first thing a free-text move still lacks for its stage; the opponent asks for it in their own voice. */
+export type GapId = 'acknowledge' | 'together' | 'common' | 'positions' | 'check' | 'boundary' | 'openQuestion' | 'axes' | 'proposal' | 'terms' | 'exchange' | 'objection' | 'mitigation' | 'contingency' | 'summary' | 'owner' | 'written';
+export type Choice = { text: string; skill: string; points: number; trust: number; feedback: string; tension?: number; intent?: NegotiationIntent; interests?: string[]; freeText?: boolean; technique?: TechniqueId; timerLeft?: number; voice?: boolean; cues?: Cue[]; figure?: string; gaps?: GapId[]; hinted?: string };
 export type Turn = Choice & { reply: string };
 export const defaults: Record<Domain, Config> = {
  supplier: { domain: 'supplier', topic: 'Цена долгосрочного контракта', difficulty: 'Продвинутый', tone: 'Сдержанный', role: 'Директор по продажам', goal: 'Сохранить маржу и получить гарантированный объём' },
@@ -30,7 +34,9 @@ export const STORY_TOPICS: Record<Domain, string[]> = {
 export function usesStory(config: Pick<Config, 'domain' | 'topic' | 'custom'>) {
  return !config.custom && STORY_TOPICS[config.domain].includes(config.topic.trim());
 }
-const lowerFirst = (value: string) => value ? value[0].toLowerCase() + value.slice(1) : value;
+// Acronyms such as «KPI» or «ОЭЗ» keep their case inside a sentence.
+const lowerFirst = (value: string) => !value || /^\p{Lu}{2}/u.test(value) ? value : value[0].toLowerCase() + value.slice(1);
+const upperFirst = (value: string) => value ? value[0].toUpperCase() + value.slice(1) : value;
 /** Fills {topic}, {role} and {goal} (lower-cased so it reads inside a sentence). */
 export function fillTemplate(text: string, config: Pick<Config, 'topic' | 'role' | 'goal'>) {
  return text.replaceAll('{topic}', config.topic.trim()).replaceAll('{role}', lowerFirst(config.role.trim())).replaceAll('{goal}', lowerFirst(config.goal.trim().replace(/[.!]+$/, '')));
@@ -128,7 +134,14 @@ export function withInterests(source: Domain | Config, stage: number, c: Choice,
  const known = discoveredInterests(turns);
  const text = normalizeNegotiationText(c.text);
  const found = list.filter(item => !known.has(item.id) && semanticMatch(text, item.pattern)).map(item => item.id);
- if (!found.length) return c;
+ if (!found.length) {
+  // An open question about priorities earns a clue: the opponent names a topic, the player still has to take it up.
+  if (!c.cues?.includes('interestQuestion')) return c;
+  const hinted = new Set(turns.map(turn => turn.hinted));
+  const open = list.filter(item => !known.has(item.id));
+  const next = open.find(item => !hinted.has(item.id)) ?? open[0];
+  return next ? { ...c, hinted: next.id } : c;
+ }
  const maximum = STAGE_MAX[Math.max(0, Math.min(stage, SESSION_STAGE_COUNT - 1))];
  const labels = found.map(id => list.find(item => item.id === id)!.label.toLowerCase()).join('; ');
  return {
@@ -180,6 +193,7 @@ type TextSignals = {
  meaningfulWords:number;
  openQuestion:boolean;
  checkQuestion:boolean;
+ rapport:boolean;
  empathy:boolean;
  acknowledgesOther:boolean;
  collaboration:boolean;
@@ -211,6 +225,7 @@ type StageAssessment = {
  points:number;
  strengths:string[];
  improvements:string[];
+ gaps:GapId[];
 };
 
 const STAGE_MAX=[17,17,19,19,17,18] as const;
@@ -233,6 +248,7 @@ function detectSignals(text:string,domain:Domain):TextSignals {
  const openQuestion=semanticMatch(speech,/\b(?:какие|какой|какая|почему|зачем|сколько|когда)\b|\bкак (?:вы|мы|это|лучше|можно)\b|\bчто (?:для вас|вам|сильнее|мешает|нужно|важнее|повлияет)\b|\bрасскаж(?:ите|и)|\bпоможет ли\b|\bможем ли\b/u);
  const checkQuestion=semanticMatch(speech,/\b(?:правильно|верно) ли (?:я |мы )?(?:понима|зафиксир)|\bправильно (?:ли )?(?:я |мы )?понима|\bдавайте сверим|\bсверим (?:позиции|условия|понимание)|\bуточню[: ,]/u);
  const rejectsUnderstanding=semanticMatch(speech,/\b(?:не понимаю|не вижу|мне безразлично|мне все равно)/u);
+ const rapport=semanticMatch(speech,/\b(?:здравствуй|добрый (?:день|вечер)|доброе утро|приветству|рад(?:а)? (?:встрече|знакомству|вас видеть)|спасибо|благодар)/u);
  const empathy=!rejectsUnderstanding&&semanticMatch(speech,/\b(?:понимаю|вижу,? что|слышу,? что|признаю|ценю|спасибо за|учитываю|согласен,? что)/u);
  const acknowledgesOther=!rejectsUnderstanding&&semanticMatch(speech,/\b(?:понимаю|вижу|слышу|признаю|учитываю)[, ]+(?:что|ваш|вашу|ваши)|\b(?:для вас|вам важно|ваша позици|ваши услов|ваш интерес|ваша цель|вы хотите|вы предлагаете|вас беспокоит)/u);
  const collaboration=!semanticMatch(speech,/\b(?:не хочу|не будем|не готов) (?:обсуждать|искать|продолжать)/u)&&semanticMatch(speech,/\b(?:давайте|вместе|готов(?:ы)? обсудить|найд[её]м решение|найти решение|поиск решения|продолжить диалог|разобраться вместе|сверим)/u);
@@ -243,7 +259,7 @@ function detectSignals(text:string,domain:Domain):TextSignals {
  const interests=semanticMatch(speech,/\b(?:интерес|приоритет|важн|потребност|цель|мотивац|опасени|ожидани|что вы хотите|что вам нужно)/u);
  const reasons=semanticMatch(speech,/\b(?:почему|причин|что (?:сильнее )?влияет|из-за чего|ограничени|что мешает|что стоит за|риск|обоснов|основани)/u);
  const alternatives=semanticMatch(speech,/\b(?:вариант|альтернатив|либо|или|что если|при каком условии|какие еще|иначе можно|несколько решений)/u);
- const proposal=!semanticMatch(speech,/\bне предлага/u)&&semanticMatch(speech,/\b(?:предлага|готов(?:ы)?|можем|давайте (?:добавим|зафиксируем|согласуем|сделаем)|обязуем|бер[её]м на себя|вариант такой)/u);
+ const proposal=!semanticMatch(speech,/\bне предлага/u)&&semanticMatch(speech,/\b(?:предлага|готов(?:ы)?|можем|давайте (?:добавим|зафиксируем|согласуем|сделаем)|обязуем|бер[её]м на себя|вариант такой|давайте так|предлож(?:у|им|ение)|я (?:беру|возьму|могу|готова?))/u);
  const reciprocity=semanticMatch(speech,/\b(?:в обмен на|если .{2,80},? то|при условии|со своей стороны|встречн|взамен|за это|с вашей стороны)/u);
  const counterpartValue=semanticMatch(speech,/\b(?:для вас это|вам даст|снизит ваш|снимет ваш|сохранит|гарантирует вам|гарантированн(?:ый|ого) объем|учтет ваши|вы получите|поможет вам|ваша выгода)/u);
  const objection=semanticMatch(speech,/\b(?:понимаю|вижу|признаю|учитываю)[^.!?]{0,35}\b(?:риск|опасени|сомнени|возражени|ограничени|бюджет)|\b(?:вас беспокоит|главное возражение|риск для вас)/u);
@@ -264,53 +280,56 @@ function detectSignals(text:string,domain:Domain):TextSignals {
  ];
  const domainPattern=domain==='supplier'?/\b(?:себестоимост|марж|объем|поставк|оплат|контракт|цен)/u:domain==='career'?/\b(?:роль|зарплат|kpi|кпи|ответственност|команд|проект|результат)/u:/\b(?:команд|релиз|срок|переработ|отгул|нагрузк|спринт|качеств|баг|объем|стажер)/u;
  const termGroups=countTrue(termPatterns.map(pattern=>semanticMatch(speech,pattern)));const domainRelevant=semanticMatch(speech,domainPattern);
- return {meaningfulWords:words.length,openQuestion,checkQuestion,empathy,acknowledgesOther,collaboration,mutualValue,selfPosition,otherPosition,boundary,interests,reasons,alternatives,proposal,reciprocity,counterpartValue,objection,mitigation,contingency,closing,written,owner,deadline,confirms,termGroups,domainRelevant};
+ return {meaningfulWords:words.length,openQuestion,checkQuestion,rapport,empathy,acknowledgesOther,collaboration,mutualValue,selfPosition,otherPosition,boundary,interests,reasons,alternatives,proposal,reciprocity,counterpartValue,objection,mitigation,contingency,closing,written,owner,deadline,confirms,termGroups,domainRelevant};
 }
 
 function assessStage(stage:number,s:TextSignals):StageAssessment {
  const current=Math.max(0,Math.min(stage,SESSION_STAGE_COUNT-1));
  let raw=3;let skill='Уточнение';let intent:NegotiationIntent='scripted';const strengths:string[]=[];const improvements:string[]=[];
  const add=(condition:boolean,points:number,label:string)=>{if(condition){raw+=points;strengths.push(label)}};
+ const gaps:GapId[]=[];const need=(gap:GapId,advice:string)=>{improvements.push(advice);if(!gaps.includes(gap))gaps.push(gap)};
  if(current===0){
   skill='Контакт';
   add(s.empathy,4,'эмпатия');add(s.acknowledgesOther,3,'признание позиции собеседника');add(s.collaboration,4,'приглашение к диалогу');add(s.mutualValue,3,'общая ценность');
-  if(!s.empathy&&!s.acknowledgesOther)improvements.push('Признайте позицию или переживание собеседника.');
-  if(!s.collaboration)improvements.push('Предложите вместе искать решение.');
-  if(!s.mutualValue)improvements.push('Назовите общую цель или ценность отношений.');
+  // Politeness and a question about interests are good openings too, even though they belong to later stages of the method.
+  add(s.rapport,2,'вежливое начало');add(s.openQuestion&&(s.interests||s.reasons),4,'вопрос об интересах');
+  if(!s.empathy&&!s.acknowledgesOther)need('acknowledge','Признайте позицию или переживание собеседника.');
+  if(!s.collaboration)need('together','Предложите вместе искать решение.');
+  if(!s.mutualValue)need('common','Назовите общую цель или ценность отношений.');
  }else if(current===1){
   skill='Рамка разговора';intent=s.openQuestion||s.checkQuestion?'question':'scripted';
   add(s.checkQuestion,4,'проверка понимания');add(s.selfPosition,3,'ваша позиция');add(s.otherPosition,3,'позиция собеседника');add(s.boundary,3,'границы и ограничения');add(s.openQuestion,2,'вопрос на сверку');
-  if(!s.selfPosition||!s.otherPosition)improvements.push('Обозначьте позиции обеих сторон, не подменяя одну другой.');
-  if(!s.checkQuestion&&!s.openQuestion)improvements.push('Проверьте, одинаково ли вы понимаете условия и ограничения.');
-  if(!s.boundary)improvements.push('Добавьте конкретную границу, критерий или ограничение.');
+  if(!s.selfPosition||!s.otherPosition)need('positions','Обозначьте позиции обеих сторон, не подменяя одну другой.');
+  if(!s.checkQuestion&&!s.openQuestion)need('check','Проверьте, одинаково ли вы понимаете условия и ограничения.');
+  if(!s.boundary)need('boundary','Добавьте конкретную границу, критерий или ограничение.');
  }else if(current===2){
   skill='Интересы';intent='question';
   add(s.openQuestion,4,'открытый вопрос');add(s.interests,4,'фокус на интересах');add(s.reasons,3,'поиск причин и ограничений');add(s.alternatives||s.termGroups>=2,3,'исследование нескольких параметров');add(s.domainRelevant,2,'предметная область вопроса');
-  if(!s.openQuestion)improvements.push('Задайте открытый вопрос, на который нельзя ответить только «да» или «нет».');
-  if(!s.interests&&!s.reasons)improvements.push('Спросите о приоритетах, причинах или скрытых ограничениях.');
-  if(!s.alternatives&&s.termGroups<1)improvements.push('Предложите несколько осей для ответа: срок, объём, ресурсы или критерии.');
+  if(!s.openQuestion)need('openQuestion','Задайте открытый вопрос, на который нельзя ответить только «да» или «нет».');
+  if(!s.interests&&!s.reasons)need('openQuestion','Спросите о приоритетах, причинах или скрытых ограничениях.');
+  if(!s.alternatives&&s.termGroups<1)need('axes','Предложите несколько осей для ответа: срок, объём, ресурсы или критерии.');
  }else if(current===3){
   skill='Взаимный обмен';intent='proposal';
   add(s.proposal,3,'ясное предложение');add(s.termGroups>=2,4,'несколько конкретных условий');add(s.reciprocity,5,'встречный обмен');add(s.counterpartValue||s.mutualValue,3,'ценность для второй стороны');add(s.alternatives||s.contingency,2,'вариативность условий');
-  if(!s.proposal)improvements.push('Сформулируйте предложение как конкретный следующий ход.');
-  if(s.termGroups<2)improvements.push('Свяжите минимум два условия: цену, срок, объём, роль, KPI или ресурсы.');
-  if(!s.reciprocity)improvements.push('Покажите обмен: что вы даёте и что ожидаете взамен.');
+  if(!s.proposal)need('proposal','Сформулируйте предложение как конкретный следующий ход.');
+  if(s.termGroups<2)need('terms','Свяжите минимум два условия: цену, срок, объём, роль, KPI или ресурсы.');
+  if(!s.reciprocity)need('exchange','Покажите обмен: что вы даёте и что ожидаете взамен.');
  }else if(current===4){
   skill='Работа с возражением';intent=s.mitigation?'proposal':'question';
   add(s.objection,4,'признание возражения');add(s.openQuestion,3,'диагностика сомнения');add(s.mitigation,4,'механизм снижения риска');add(s.contingency,3,'условие пересмотра');add(s.termGroups>=2,2,'проверяемые параметры');
-  if(!s.objection)improvements.push('Сначала назовите риск или сомнение собеседника своими словами.');
-  if(!s.openQuestion&&!s.mitigation)improvements.push('Уточните причину возражения или предложите способ снизить риск.');
-  if(!s.contingency&&s.termGroups<2)improvements.push('Добавьте проверяемый механизм: пилот, критерий, коридор или дату пересмотра.');
+  if(!s.objection)need('objection','Сначала назовите риск или сомнение собеседника своими словами.');
+  if(!s.openQuestion&&!s.mitigation)need('mitigation','Уточните причину возражения или предложите способ снизить риск.');
+  if(!s.contingency&&s.termGroups<2)need('contingency','Добавьте проверяемый механизм: пилот, критерий, коридор или дату пересмотра.');
  }else{
   skill='Фиксация';intent='commitment';
   add(s.closing,4,'фиксация итога');add(s.termGroups>=2,3,'конкретные условия');add(s.written,2,'письменное подтверждение');add(s.owner,3,'ответственный');add(s.deadline,3,'срок');add(s.confirms,2,'проверка согласия');
-  if(!s.closing)improvements.push('Кратко зафиксируйте, о чём договорились.');
-  if(!s.owner||!s.deadline)improvements.push('Назовите ответственного и срок следующего шага.');
-  if(!s.written&&!s.confirms)improvements.push('Предложите письменное подтверждение или проверьте согласие второй стороны.');
+  if(!s.closing)need('summary','Кратко зафиксируйте, о чём договорились.');
+  if(!s.owner||!s.deadline)need('owner','Назовите ответственного и срок следующего шага.');
+  if(!s.written&&!s.confirms)need('written','Предложите письменное подтверждение или проверьте согласие второй стороны.');
  }
  const evidenceCap=strengths.length===0?8:strengths.length===1?11:strengths.length===2?14:STAGE_MAX[current];
  const lengthCap=s.meaningfulWords<3?7:s.meaningfulWords<6?11:STAGE_MAX[current];
- return {skill,intent,points:Math.max(3,Math.min(raw,evidenceCap,lengthCap,STAGE_MAX[current])),strengths,improvements};
+ return {skill,intent,points:Math.max(3,Math.min(raw,evidenceCap,lengthCap,STAGE_MAX[current])),strengths,improvements,gaps};
 }
 
 // Insults are matched from the start of a word so ordinary words such as «плохо» or «хлеба» are not flagged.
@@ -339,47 +358,155 @@ export function evaluateText(text: string, domain: Domain, stage: number, previo
   return make('Обесценивание',2,-20,'Вы отвергли интересы или возражение второй стороны. Такой ход усиливает сопротивление и не решает задачу этапа.',28,'demand');
  }
  const signals=detectSignals(t,domain);
+ // What the opponent can answer in the player's own words: a question, a figure, an offer, a greeting.
+ const cues=cuesOf(clean,signals);const figure=figureOf(clean);
+ const heard=(c:Choice):Choice=>({...c,...(cues.length?{cues}:{}),...(figure?{figure}:{})});
  const hasSemanticEvidence=Object.values(signals).some(value=>value===true)||signals.termGroups>0;
  const isDemand=/(требую|дайте|снижайте|повышайте|мне нужно|мне нужен|вы должны|согласитесь|принимайте)/.test(t);
- if (/^(?:хорошо[, ]*)?(?:я |мы )?(?:согласен|согласны|принимаю|принимаем)(?: со всем| на все| любые условия| ваши условия)[.! ]*$/.test(t)) {
-  return make('Безусловная уступка',5,2,'Согласие без проверки условий сохраняет спокойствие, но лишает вас переговорной позиции. Уточните предмет, границы и встречное обязательство.',7,'vague');
+ if (/^(?:хорошо[, ]*)?(?:я |мы )?(?:согласен|согласны|принимаю|принимаем)(?: со всем| на все| на (?:любые|ваши|эти) условия| любые условия| ваши условия)[.! ]*$/.test(t)) {
+  return {...make('Безусловная уступка',5,2,'Согласие без проверки условий сохраняет спокойствие, но лишает вас переговорной позиции. Уточните предмет, границы и встречное обязательство.',7,'vague'),cues:[...cues,'concession']};
  }
  if ((signals.meaningfulWords<4&&!hasSemanticEvidence) || /^(?:ладно|хорошо|не знаю|решайте|думайте|просто сделайте|ну и что)[.! ]*$/.test(t)) {
-  return make('Без конкретики',5,-5,'Собеседнику не за что зацепиться: нет вопроса, условия или следующего шага. Напряжённость растёт из-за неопределённости.',14,'vague');
+  return heard(make('Без конкретики',5,-5,'Собеседнику не за что зацепиться: нет вопроса, условия или следующего шага. Напряжённость растёт из-за неопределённости.',14,'vague'));
  }
- if (isDemand&&!signals.mutualValue&&!signals.reciprocity&&!signals.openQuestion) {
-  return make('Одностороннее требование',5,-10,'Требование обозначает вашу позицию, но не даёт собеседнику встречной ценности или выбора.',19,'demand');
+ // «Мне нужно…» inside a check question or next to the other side's position is framing, not a demand.
+ if (isDemand&&!signals.mutualValue&&!signals.reciprocity&&!signals.openQuestion&&!signals.checkQuestion&&!signals.acknowledgesOther) {
+  return heard(make('Одностороннее требование',5,-10,'Требование обозначает вашу позицию, но не даёт собеседнику встречной ценности или выбора.',19,'demand'));
  }
  const assessment=assessStage(stage,signals);const maximum=STAGE_MAX[Math.max(0,Math.min(stage,SESSION_STAGE_COUNT-1))];const quality=assessment.points/maximum;
- const trust=quality>=.85?10:quality>=.68?6:quality>=.5?2:-4;
- const tensionDelta=quality>=.85?-9:quality>=.68?-4:quality>=.5?4:11;
+ // A polite move that misses the stage is weak, but it is not an attack: no loss of trust, less tension.
+ const polite=quality<.5&&(signals.rapport||signals.empathy);
+ const trust=quality>=.85?10:quality>=.68?6:quality>=.5?2:polite?0:-4;
+ const tensionDelta=quality>=.85?-9:quality>=.68?-4:quality>=.5?4:polite?6:11;
  const positive=assessment.strengths.length?`Сработало: ${assessment.strengths.slice(0,3).join(', ')}.`:'Ход пока не решает задачу этого этапа.';
  const advice=assessment.improvements[0]??'Формулировка сочетает несколько сильных элементов этапа.';
  const intent=assessment.points<=7&&!signals.openQuestion&&!signals.proposal?'vague':assessment.intent;
+ const gaps=assessment.gaps.length?{gaps:assessment.gaps}:{};
  if (semanticMatch(t,BATNA)) {
   // Naming the alternative calmly strengthens the position without pressure.
-  return {...make(assessment.skill,Math.min(maximum,assessment.points+2),Math.max(trust,2),`Вы спокойно опёрлись на свою альтернативу (BATNA): это усиливает позицию без угроз. ${positive} ${advice}`,Math.min(tensionDelta,2),intent),technique:'batna'};
+  return heard({...make(assessment.skill,Math.min(maximum,assessment.points+2),Math.max(trust,2),`Вы спокойно опёрлись на свою альтернативу (BATNA): это усиливает позицию без угроз. ${positive} ${advice}`,Math.min(tensionDelta,2),intent),technique:'batna',...gaps});
  }
- return make(assessment.skill,assessment.points,trust,`${positive} ${advice}`,tensionDelta,intent);
+ return heard({...make(assessment.skill,assessment.points,trust,`${positive} ${advice}`,tensionDelta,intent),...gaps});
 }
+function cuesOf(text:string,s:TextSignals):Cue[]{
+ const cues:Cue[]=[];
+ if(s.rapport)cues.push('greeting');
+ if(s.checkQuestion)cues.push('checkQuestion');
+ // An open question addressed to the opponent («что для вас…», «какая часть неизбежна для вас?») is a question about interests.
+ if(s.openQuestion&&(s.interests||s.reasons||s.otherPosition))cues.push('interestQuestion');
+ else if(!s.checkQuestion&&(s.openQuestion||text.includes('?')))cues.push('question');
+ if(s.empathy)cues.push('empathy');
+ if(s.proposal)cues.push('proposal');
+ if(s.reciprocity)cues.push('exchange');
+ return cues;
+}
+const NUMBER_WORD='(?:один|одн[аоу]|два|две|три|четыре|пять|шесть|семь|восемь|девять|десять|пятнадцать|двадцать|тридцать|сорок|пятьдесят|сто)';
+const FIGURE=new RegExp(`(?<![\\p{L}\\p{N}])(?:\\d+(?:[.,]\\d+)?|${NUMBER_WORD}(?:\\s+${NUMBER_WORD})?)\\s*(?:%|процент\\p{L}*|руб\\p{L}*|₽|тыс\\p{L}*|млн|миллион\\p{L}*|млрд|дн(?:я|ей|ь)|недел\\p{L}*|месяц\\p{L}*|квартал\\p{L}*|год(?:а|ов)?|лет|мвт)(?![\\p{L}])`,'iu');
+/** The first figure with a unit the player names («5%», «пять процентов», «три месяца»). */
+function figureOf(text:string){return text.match(FIGURE)?.[0].replace(/\s+/g,' ').trim()}
 export function threshold(config: Config) { return { 'Базовый': 52, 'Продвинутый': 65, 'Эксперт': 78 }[config.difficulty]; }
+const FEMALE_EXCEPTIONS = new Set(['илья', 'никита', 'кузьма', 'фома', 'лука', 'савва', 'данила']);
+/** Grammatical gender from the first name, so the opponent says «готов» or «готова» correctly. */
+export function personaGender(person: string): 'male' | 'female' {
+ const first = person.trim().split(/\s+/)[0]?.toLowerCase() ?? '';
+ return /[ая]$/.test(first) && !FEMALE_EXCEPTIONS.has(first) ? 'female' : 'male';
+}
+const gendered = (config: Config) => (male: string, female: string) => personaGender(scenarioFor(config).person) === 'female' ? female : male;
+/** A stable choice between phrasings, so repeated games do not sound identical yet a reload shows the same line. */
+function variant(options: string[], seed: string) {
+ let hash = 0;
+ for (const char of seed) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+ return options[hash % options.length];
+}
+/** The opponent asks for what the move lacks: the stage assessment turned into their own voice. */
+const GAP_LINES: Record<GapId, string> = {
+ acknowledge: 'Мне важно понять, слышите ли вы мою сторону.',
+ together: 'Готовы ли вы искать решение вместе, а не только отстаивать своё?',
+ common: 'Назовите, что нас объединяет в этом вопросе, — от этого проще двигаться.',
+ positions: 'Давайте проговорим обе позиции — и вашу, и мою.',
+ check: 'Проверьте, одинаково ли мы понимаем условия.',
+ boundary: 'И где для вас граница, за которую вы не пойдёте?',
+ openQuestion: 'Спросите, что стоит за моей позицией, — я отвечу.',
+ axes: 'Давайте смотреть шире одного параметра: есть сроки, объёмы, ресурсы.',
+ proposal: 'Что конкретно вы предлагаете?',
+ terms: 'Свяжите хотя бы два условия, чтобы мне было что взвесить.',
+ exchange: 'И что вы готовы дать взамен?',
+ objection: 'Мой главный риск вы пока не назвали.',
+ mitigation: 'Как вы предлагаете снизить этот риск?',
+ contingency: 'Что будет, если что-то пойдёт не по плану?',
+ summary: 'Давайте коротко проговорим, о чём мы договорились.',
+ owner: 'Кто и к какому сроку делает следующий шаг?',
+ written: 'Закрепим это письменно?',
+};
+/** Stage stance for free text: unlike the scripted replies it never refers to words the player did not say. */
+const FREE_CORE: { strong: string[]; weak: string[] }[] = [
+ { strong: ['С таким настроем можно работать.', 'Хорошее начало для разговора.'], weak: ['Пока я не очень понимаю, с чем вы пришли.', 'Давайте сначала поймём, чего мы оба хотим от этой встречи.'] },
+ { strong: ['Рамка понятна, от неё и будем двигаться.', 'Да, так картина становится яснее.'], weak: ['Пока я слышу только часть картины.', 'Мы пока говорим каждый о своём.'] },
+ { strong: ['Вы смотрите в корень.', 'С этого и стоит начинать поиск решения.'], weak: ['Пока мы обсуждаем позиции, а не то, что за ними стоит.', 'Мне сложно раскрыться, пока разговор идёт вокруг требований.'] },
+ { strong: ['Такой пакет уже можно обсуждать предметно.', 'Это похоже на предложение, с которым можно работать.'], weak: ['Пока это не похоже на пакет, под которым я могу подписаться.', 'Мне не хватает конкретики, чтобы принять решение.'] },
+ { strong: ['Это снимает большую часть моих опасений.', 'С таким механизмом риск выглядит управляемым.'], weak: ['Моё опасение пока остаётся.', 'Риск по-прежнему лежит на мне.'] },
+ { strong: ['Да, так и зафиксируем.', 'Договорились, картина общая.'], weak: ['По сути мы близко, но договорённость пока размыта.', 'Пока это звучит как намерение, а не договорённость.'] },
+];
+function vagueLine(config: Config) {
+ const say = gendered(config);
+ return config.domain === 'supplier' ? `Пока я не ${say('услышал', 'услышала')} конкретного предложения. Назовите цену, объём, срок и то, что вы готовы гарантировать со своей стороны.` : 'Пока неясно, что именно вы предлагаете. Сформулируйте роль, измеримый результат и срок, после которого мы проверим договорённость.';
+}
+/**
+ * Reply to a free-text move: it reacts to what the player actually said (a greeting, a question, a figure, an offer),
+ * keeps the stance of the stage and then asks for what is missing, or opens up about a touched interest.
+ */
+function freeReply(config: Config, stage: number, c: Choice, trust: number) {
+ const current = Math.max(0, Math.min(stage, SESSION_STAGE_COUNT - 1));
+ const say = gendered(config);
+ const cues = new Set(c.cues ?? []);
+ const strong = c.points / STAGE_MAX[current] >= .68;
+ const list = interestsFor(config);
+ const greeting = current === 0 && cues.has('greeting') ? { Дружелюбный: say('Взаимно, рад встрече.', 'Взаимно, рада встрече.'), Сдержанный: 'Здравствуйте.', Жёсткий: 'Здравствуйте. Давайте по существу.' }[config.tone] : '';
+ const asked = cues.has('question') || cues.has('interestQuestion') || cues.has('checkQuestion');
+ // A figure the opponent named first (for example the 15% from the opening) is not the player's offer.
+ const figure = c.figure && !asked && !normalizeNegotiationText(openingLine(config)).includes(normalizeNegotiationText(c.figure)) ? upperFirst(c.figure) : '';
+ if (cues.has('concession')) return [greeting, `${say('Рад', 'Рада')}, что мы сходимся. Но давайте проговорим, на что именно вы соглашаетесь, — иначе потом возникнут разночтения.`].filter(Boolean).join(' ');
+ // An empty move («ладно», «не знаю») has nothing to react to; a named figure still gets an answer.
+ if (c.intent === 'vague' && !c.gaps?.length) return figure ? `${figure} — это ваша цифра, но за ней пока ничего не стоит. ${config.domain === 'supplier' ? 'Что вы даёте взамен: объём, срок, гарантии?' : 'Что за ней стоит: какая роль, какой результат и к какому сроку?'}` : vagueLine(config);
+ if (trust < 25 && c.trust <= 0) return 'В таком тоне договориться сложно. Мне нужны конструктивные условия, иначе остановим обсуждение.';
+ const recovering = trust < 25 ? 'Так разговаривать уже можно, но доверие ещё предстоит вернуть.' : '';
+ const reveal = c.interests?.length ? list.find(item => item.id === c.interests![0])?.reveal : undefined;
+ const hinted = c.hinted ? list.find(item => item.id === c.hinted) : undefined;
+ const answers = Boolean(reveal || hinted);
+ const reaction = cues.has('checkQuestion') ? (strong ? 'Да, в целом вы поняли верно.' : 'Отчасти верно.')
+  : cues.has('interestQuestion') ? (strong ? 'Хороший вопрос.' : answers ? 'Отвечу прямо.' : '')
+  : figure ? (current <= 3 ? (strong ? `${figure} можно обсуждать, если остальные условия сложатся.` : `${figure} — это ваша цифра. Мне пока неясно, почему она должна меня устроить.`) : (strong ? `${figure} — принимаю как рабочий ориентир.` : `${figure} мы ещё не согласовали.`))
+  : cues.has('exchange') ? (strong ? 'Встречный обмен — это уже разговор по существу.' : 'Обмен я вижу, но условия пока размыты.')
+  : cues.has('empathy') ? (strong ? 'Спасибо, что учитываете мою сторону.' : 'Хорошо, что вы видите мою ситуацию.')
+  : current > 0 && cues.has('greeting') ? 'И вам спасибо.'
+  : '';
+ const clue = hinted ? `Многое для меня зависит от темы, которую мы ещё не обсуждали: ${lowerFirst(hinted.label)}.` : undefined;
+ const gap = c.gaps?.length ? GAP_LINES[c.gaps[0]] : '';
+ const detail = reveal ?? clue ?? gap;
+ const stance = variant(FREE_CORE[current][strong ? 'strong' : 'weak'], c.text);
+ // The stance is skipped when the reply already reacts and adds something, or when the opponent opens up anyway.
+ const core = (reaction && detail) || (reveal && !strong) ? '' : config.tone === 'Жёсткий' && !strong ? `Скажу прямо: ${lowerFirst(stance)}` : stance;
+ // On the final stage the stance is the agreement itself, so it closes the reply.
+ const closing = current === SESSION_STAGE_COUNT - 1 && strong;
+ const final = closing ? stance : core;
+ return (closing ? [greeting, recovering, reaction, detail, final] : [greeting, recovering, reaction, core, detail]).filter(Boolean).join(' ');
+}
 export function respond(config: Config, stage: number, c: Choice, trust: number): string {
- if(c.intent==='insult') return 'Я не готов продолжать разговор в таком тоне. Если вы хотите сохранить возможность сделки, остановимся и вернёмся к уважительному обсуждению конкретных условий.';
+ const say = gendered(config);
+ if(c.intent==='insult') return `Я не ${say('готов', 'готова')} продолжать разговор в таком тоне. Если вы хотите сохранить возможность сделки, остановимся и вернёмся к уважительному обсуждению конкретных условий.`;
  if(c.intent==='threat') return 'Ультиматум не даёт мне оснований двигаться навстречу. Либо обсудим ограничения и встречные обязательства, либо придётся поставить переговоры на паузу.';
- if(c.intent==='vague') return config.domain==='supplier'?'Пока я не услышал конкретного предложения. Назовите цену, объём, срок и то, что вы готовы гарантировать со своей стороны.':'Пока неясно, что именно вы предлагаете. Сформулируйте роль, измеримый результат и срок, после которого мы проверим договорённость.';
- if(c.intent==='demand') return 'Я услышал вашу позицию, но одностороннее требование не решает моих ограничений. Что вы предлагаете взамен и какой риск готовы взять на себя?';
+ if(c.intent==='demand') return `Я ${say('услышал', 'услышала')} вашу позицию, но одностороннее требование не решает моих ограничений. Что вы предлагаете взамен и какой риск готовы взять на себя?`;
  if(c.intent==='silence') return 'Пауза затянулась. Если вам нужно время подумать, так и скажите, — но молчание я воспринимаю как отсутствие позиции.';
- if(c.intent==='repair') return 'Спасибо, что остановились и вернули разговор в рабочее русло. Я готов продолжить, если дальше мы будем обсуждать конкретные условия и интересы обеих сторон.';
+ if(c.intent==='repair') return `Спасибо, что остановились и вернули разговор в рабочее русло. Я ${say('готов', 'готова')} продолжить, если дальше мы будем обсуждать конкретные условия и интересы обеих сторон.`;
+ if(c.freeText) return freeReply(config, stage, c, trust);
+ if(c.intent==='vague') return vagueLine(config);
  const prefix = config.tone === 'Жёсткий' ? 'Перейдём к делу. ' : config.tone === 'Дружелюбный' ? 'Спасибо за открытый разговор. ' : '';
  if (trust < 25) return prefix+'В таком тоне договориться сложно. Мне нужны конструктивные условия, иначе остановим обсуждение.';
  const current=Math.max(0,Math.min(stage,SESSION_STAGE_COUNT-1));
- // Each stage branches on the quality of the move: a strong move opens the deal, a weak one costs leverage, pressure hardens the opponent.
- // Free text is only «hostile» on a real conflict; a merely weak phrasing gets the weak reply.
- const branch=c.trust<=(c.freeText?-10:-1)?'hostile':c.points>=15?'strong':'weak';
+ // Each answer option has its own reply: a strong move opens the deal, a weak one costs leverage, pressure hardens the opponent.
+ const branch=c.trust<0?'hostile':c.points>=15?'strong':'weak';
  const line=fillTemplate((usesStory(config)?REPLIES[config.domain]:GENERIC_REPLIES)[current][branch],config);
- // A free-text reply that touches a hidden interest makes the opponent open up about it.
- const revealed=c.freeText&&branch!=='hostile'&&c.interests?.length?' '+(interestsFor(config).find(item=>item.id===c.interests![0])?.reveal??''):'';
- return (branch==='hostile'?'':prefix)+line+(current===2&&branch==='strong'?` Мой приоритет: ${config.goal.toLowerCase()}.`:'')+revealed;
+ return (branch==='hostile'?'':prefix)+line+(current===2&&branch==='strong'?` Мой приоритет: ${lowerFirst(config.goal.trim().replace(/[.!]+$/,''))}.`:'');
 }
 type ReplyBranches={strong:string;weak:string;hostile:string};
 /** Opponent replies for a custom topic: gender-neutral, with {topic}, {role} and {goal}. */

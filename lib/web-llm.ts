@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import type { InitProgressReport, MLCEngineInterface } from '@mlc-ai/web-llm';
-import { Choice, Config, interestsFor, outcome, respond, scenarioFor, SESSION_STAGE_COUNT, stages, tension, Turn } from './engine';
+import { Choice, Config, interestsFor, outcome, personaGender, respond, scenarioFor, SESSION_STAGE_COUNT, stages, tension, Turn } from './engine';
+
+export { personaGender };
 
 /**
  * On-device opponent: a small instruct model runs in the browser through WebGPU (WebLLM).
@@ -56,8 +58,10 @@ export function buildLocalPrompt(config: Config, turns: Turn[], choice: Choice, 
   const female = personaGender(scenario.person) === 'female';
   const mood = pressure >= 70 ? (female ? 'ты раздражена и близка к тому, чтобы прервать встречу' : 'ты раздражён и близок к тому, чтобы прервать встречу')
     : pressure >= 45 ? (female ? 'ты насторожена' : 'ты насторожен') : (female ? 'ты открыта к диалогу' : 'ты открыт к диалогу');
-  // Small models copy the player's line when it comes right before the task, so the player's words are
-  // given as context and the task is to retell the opponent's own draft reply.
+  const asked = choice.cues?.some(cue => cue === 'question' || cue === 'interestQuestion' || cue === 'checkQuestion');
+  // The model answers the player's words; the scenario reply fixes what the answer must mean, so a small model
+  // neither agrees to terms the scenario does not allow nor drifts away. The task comes last, after the gist,
+  // because small models copy whatever line stands right before it.
   return [
     { role: 'system', content: [
       `Ты — ${clip(scenario.person, 60)}, ${clip(config.role.toLowerCase(), 120)}. Идут деловые переговоры на тему «${clip(config.topic, 120)}». Говори о себе в ${female ? 'женском' : 'мужском'} роде и обращайся к собеседнику на «вы».`,
@@ -67,22 +71,29 @@ export function buildLocalPrompt(config: Config, turns: Turn[], choice: Choice, 
     ].join(' ') },
     { role: 'user', content: [
       history ? `Ход разговора:\n${history}` : `Ты начал разговор словами: ${clip(scenario.opening, 300)}`,
-      `Этап: ${stages[stage]}. Контекст: собеседник только что сказал тебе: «${clip(choice.text, 220)}»`,
+      `Этап: ${stages[stage]}. Собеседник только что сказал тебе: «${clip(choice.text, 220)}»`,
+      asked ? 'Он задал вопрос — ответь на него по существу.' : choice.figure ? `Он назвал цифру «${clip(choice.figure, 40)}» — отреагируй на неё.` : '',
       touched.length ? `Собеседник затронул твой скрытый интерес (${touched.join('; ')}) — признай это.` : '',
-      `Твоя реплика в ответ (черновик): «${clip(anchor)}»`,
-      'Перескажи свою реплику короче и живее, 2–3 предложения, своими словами. Не пересказывай слова собеседника. Выведи только текст реплики.',
+      `Суть твоего ответа: «${clip(anchor)}»`,
+      'Ответь собеседнику своими словами, 2–3 предложения, и сохрани эту суть. Не соглашайся на то, чего в ней нет, и не повторяй его фразы. Выведи только текст реплики.',
     ].filter(Boolean).join('\n\n') },
   ];
 }
 
 const STOP_STEMS = new Set(['котор', 'также', 'между', 'чтобы', 'может', 'будет', 'очень', 'давай', 'нужно', 'важно', 'можно', 'сейча', 'этого', 'этому', 'всего']);
 const stemsOf = (text: string) => new Set((text.toLowerCase().replace(/ё/g, 'е').match(/[а-я]{5,}/g) ?? []).map(word => word.slice(0, 5)).filter(stem => !STOP_STEMS.has(stem)));
-/** A reply must share meaning with the scripted anchor: small models otherwise drift or swap roles. */
-export function sharesMeaning(reply: string, anchor: string) {
+/**
+ * A reply must share meaning with the scripted anchor: small models otherwise drift or swap roles.
+ * One shared word is enough when the reply also picks up the player's own words, i.e. it answers them.
+ */
+export function sharesMeaning(reply: string, anchor: string, player = '') {
   const expected = stemsOf(anchor);
+  const own = stemsOf(reply);
   let shared = 0;
-  for (const stem of stemsOf(reply)) if (expected.has(stem)) shared++;
-  return shared >= 2;
+  for (const stem of own) if (expected.has(stem)) shared++;
+  if (shared >= 2) return true;
+  const theirs = stemsOf(player);
+  return shared >= 1 && [...own].some(stem => theirs.has(stem) && !expected.has(stem));
 }
 const firstWords = (text: string) => (text.toLowerCase().replace(/ё/g, 'е').match(/[а-яa-z0-9]+/g) ?? []).slice(0, 5).join(' ');
 /** Small models like to repeat the player's line back; a shared greeting is fine, a copied line is not. */
@@ -97,15 +108,13 @@ export function echoesPlayer(reply: string, player: string, anchor = '') {
   for (const stem of own) if (theirs.has(stem)) copied++;
   return own.size > 0 && copied / own.size >= .6;
 }
-/** Conflict moves keep their deterministic reply: small models tend to agree with ultimatums. */
+/**
+ * Conflict moves keep their deterministic reply: small models tend to agree with ultimatums.
+ * A weak or clumsy free-text move still goes to the model, so the opponent answers the player's own words.
+ */
 export function needsScriptedReply(choice: Choice) {
+  if (choice.freeText) return ['insult', 'threat', 'demand', 'silence'].includes(choice.intent ?? '');
   return choice.trust < 0 || ['insult', 'threat', 'demand', 'silence', 'vague'].includes(choice.intent ?? '');
-}
-const FEMALE_EXCEPTIONS = new Set(['илья', 'никита', 'кузьма', 'фома', 'лука', 'савва', 'данила']);
-/** Grammatical gender from the first name, so the model says «готов» or «готова» correctly. */
-export function personaGender(person: string): 'male' | 'female' {
-  const first = person.trim().split(/\s+/)[0]?.toLowerCase() ?? '';
-  return /[ая]$/.test(first) && !FEMALE_EXCEPTIONS.has(first) ? 'female' : 'male';
 }
 
 /** Cleans a model answer; returns null when it is unusable (wrong script, empty, too short, off the anchor's meaning). */
@@ -117,7 +126,7 @@ export function sanitizeLocalReply(raw: string, anchor?: string, player?: string
   if (letters.length < 15 || cyrillic.length / letters.length < .8) return null;
   const sentences = text.match(/[^.!?]+[.!?]+/g) ?? [text];
   text = sentences.slice(0, 4).join(' ').trim();
-  if (anchor && !sharesMeaning(text, anchor)) return null;
+  if (anchor && !sharesMeaning(text, anchor, player)) return null;
   if (player && echoesPlayer(text, player, anchor)) return null;
   return text.length > 650 ? `${text.slice(0, 647).replace(/\s+\S*$/, '')}…` : text;
 }
@@ -196,7 +205,12 @@ export async function removeLocalModel() {
 }
 
 export function localAiReady() { const state = useLocalAi.getState(); return state.enabled && state.status === 'ready' && engine !== null; }
-export function interruptLocalGeneration() { try { engine?.interruptGenerate(); } catch { /* nothing to stop */ } }
+/**
+ * WebLLM keeps an interrupt raised while idle, and every later non-streaming request then returns an empty reply.
+ * So only a running generation is interrupted (leaving the arena mid-reply or on the timeout).
+ */
+let generating = false;
+export function interruptLocalGeneration() { if (!generating) return; try { void engine?.interruptGenerate(); } catch { /* nothing to stop */ } }
 
 /**
  * Opponent reply from the on-device model. Never throws: without WebGPU, before the model is loaded,
@@ -207,17 +221,24 @@ export async function generateOpponentReplyWebLLM(config: Config, turns: Turn[],
   const scripted = { text: anchor, source: 'script' as const, fallback: false };
   if (!localAiReady() || needsScriptedReply(choice) || validateLocalContext(config, turns, choice, stage)) return scripted;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  generating = true;
   try {
-    const completion = engine!.chat.completions.create({ messages: buildLocalPrompt(config, turns, choice, stage), max_tokens: 160, temperature: .6, top_p: .9 });
+    // Streaming: WebLLM clears a stale interrupt at the start of a streamed request, so one bad interrupt cannot mute later replies.
+    const collect = async () => {
+      const chunks = await engine!.chat.completions.create({ messages: buildLocalPrompt(config, turns, choice, stage), max_tokens: 160, temperature: .6, top_p: .9, stream: true });
+      let raw = '';
+      for await (const chunk of chunks) raw += chunk.choices[0]?.delta?.content ?? '';
+      return raw;
+    };
     const timeout = new Promise<never>((_, reject) => { timer = setTimeout(() => { interruptLocalGeneration(); reject(new Error('timeout')); }, GENERATION_TIMEOUT_MS); });
-    const response = await Promise.race([completion, timeout]);
-    const raw = response.choices[0]?.message?.content ?? '';
+    const raw = await Promise.race([collect(), timeout]);
     const text = sanitizeLocalReply(raw, anchor, choice.text);
     if (!text) console.debug('[arena] local model reply rejected:', raw);
     return text ? { text, source: 'webllm', fallback: false } : { ...scripted, fallback: true };
   } catch {
     return { ...scripted, fallback: true };
   } finally {
+    generating = false;
     if (timer) clearTimeout(timer);
   }
 }

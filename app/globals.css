@@ -350,3 +350,15 @@ select{appearance:none;padding-right:46px!important;background-image:linear-grad
 /* Competency bars read better in at most two columns next to the radar. */
 .competency-list{grid-template-columns:repeat(2,minmax(0,1fr))}
 @media(max-width:700px){.competency-list{grid-template-columns:1fr}}
+/* Dialog: the conversation gets the height, the answer options live in the chat under the last reply. */
+.choice-tray{margin:18px 0 4px;padding-top:14px;border-top:1px dashed var(--line)}
+.choice-tray-label{display:block;font-size:11px;color:#8b9a7c;margin-bottom:10px}
+.choice-tray .options{margin-bottom:0}
+.composer-heading .choices-toggle{margin-left:auto}
+.composer-heading .choices-toggle+.coach-button{margin-left:6px}
+.session-heading h1{font-size:clamp(20px,1.9vw,28px)}
+.session-heading .eyebrow{margin-bottom:6px}
+.opponent{padding-top:13px;padding-bottom:13px}
+.message.theirs{max-width:86%}
+@media(max-width:700px){.choice-tray{margin-top:12px;padding-top:10px}.choice-tray-label{font-size:10px;margin-bottom:7px}.composer-heading .choices-toggle+.coach-button{margin-left:4px}}
+@media(max-width:1180px){.composer-heading>span:first-child{display:none}.composer-heading strong{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}.composer-heading .short-label[data-short]{font-size:0;line-height:0}.composer-heading .short-label[data-short]::after{content:attr(data-short);font-size:11px;line-height:1.2}}
