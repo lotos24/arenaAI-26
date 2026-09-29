@@ -375,7 +375,7 @@ select{appearance:none;padding-right:46px!important;background-image:linear-grad
 .own-better small{display:block;margin-top:10px;font-size:12px;line-height:1.55;color:#8b987c}
 @media(max-width:700px){.better-additions li{font-size:12px}.own-better small{font-size:11px}}
 /* Demo mode: a button on the map, a caption bar over the dialog and the option being picked. */
-.dashboard-stats .demo-button{margin-left:auto;display:inline-flex;align-items:center;gap:7px;padding:7px 14px;border-radius:999px;border:1px solid #bcd0ad;background:#eef4e6;color:#3f5f37;font-size:13px;font-weight:500;cursor:pointer;transition:background-color .3s,border-color .3s}
+.dashboard-stats .demo-button{margin-left:14px;display:inline-flex;align-items:center;gap:7px;padding:7px 14px;border-radius:999px;border:1px solid #bcd0ad;background:#eef4e6;color:#3f5f37;font-size:13px;font-weight:500;cursor:pointer;transition:background-color .3s,border-color .3s}
 .dashboard-stats .demo-button:hover{background:#e2eed5;border-color:#a8c297}
 .theme-dark .dashboard-stats .demo-button{background:#223128;border-color:#3b5243;color:#cfe3c4}
 .theme-dark .dashboard-stats .demo-button:hover{background:#2a3b30;border-color:#4b6653}
@@ -389,3 +389,7 @@ select{appearance:none;padding-right:46px!important;background-image:linear-grad
 .options button.demo-pick{border-color:#d0a25c;background:#f7eedc;box-shadow:0 0 0 3px #d0a25c33}
 .theme-dark .options button.demo-pick{background:#3a3020;border-color:#b98a45}
 @media(max-width:700px){.demo-bar{font-size:11px;padding:7px 10px;gap:8px}.demo-bar strong{display:block;margin:0}.demo-bar button{font-size:11px;padding:5px 8px}.dashboard-stats .demo-button{font-size:12px;padding:6px 11px}}
+/* The rank stat keeps its own rules now that the demo button closes the row. */
+.dashboard-stats>.stat-rank{margin-left:auto;font-size:12px}
+@media(max-width:900px){.dashboard-stats>.stat-rank{font-size:9px}}
+@media(max-width:700px){.dashboard-stats>.stat-rank{display:none}.dashboard-stats .demo-button{margin-left:auto}}
