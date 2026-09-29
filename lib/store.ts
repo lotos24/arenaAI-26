@@ -12,7 +12,8 @@ export const useArena = create<Store>()(persist((set,get)=>({
  dismissAchievements:()=>set({recentAchievements:[]}),
  setReplyDraft:text=>{const s=get().session;if(s&&!s.ended)set({session:{...s,draft:text.slice(0,800)}});},
  start:(config,learner,previousId)=>set({session:{id:crypto.randomUUID(),config:{...config},turns:[],started:Date.now(),stageCount:SESSION_STAGE_COUNT,learner:learner?.name,classCode:learner?.classCode,previousId}}),
- beginAnswer:c=>{const s=get().session;if(!s||s.ended||s.pending||s.turns.length>=sessionStageCount(s))return;set({session:{...s,draft:'',pending:{choice:c,started:Date.now()}}});},
+ beginAnswer:c=>{const s=get().session;if(!s||s.ended||s.pending||s.turns.length>=sessionStageCount(s))return;// The move remembers when it was made, so the review can quote it as «02:17 — …».
+ set({session:{...s,draft:'',pending:{choice:{...c,at:c.at??Math.max(0,Date.now()-s.started)},started:Date.now()}}});},
  resolveAnswer:reply=>{const s=get().session;if(!s||s.ended||!s.pending)return;const c=s.pending.choice;const stageCount=sessionStageCount(s);const trust=outcome(s.config,[...s.turns,{...c,reply:''}],stageCount).trust;const finalReply=reply?.trim().slice(0,1000)||respond(s.config,s.turns.length,c,trust);const {pending:_,...rest}=s;set({session:{...rest,draft:'',stageCount,turns:[...s.turns,{...c,reply:finalReply}]}});},
  answer:(c,reply)=>{get().beginAnswer(c);get().resolveAnswer(reply);},
  finish:()=>{let s=get().session;if(!s||s.ended)return;if(s.pending){const c=s.pending.choice;const trust=outcome(s.config,[...s.turns,{...c,reply:''}],sessionStageCount(s)).trust;const {pending:_,...rest}=s;s={...rest,turns:[...s.turns,{...c,reply:respond(s.config,s.turns.length,c,trust)}]};}const completed={...s,stageCount:sessionStageCount(s),ended:Date.now()};

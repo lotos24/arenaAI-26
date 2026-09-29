@@ -10,7 +10,7 @@ export type TechniqueId = 'empathy' | 'spinSituation' | 'spinProblem' | 'harvard
 export type Cue = 'greeting' | 'interestQuestion' | 'checkQuestion' | 'question' | 'empathy' | 'proposal' | 'exchange' | 'concession';
 /** The first thing a free-text move still lacks for its stage; the opponent asks for it in their own voice. */
 export type GapId = 'acknowledge' | 'together' | 'common' | 'positions' | 'check' | 'boundary' | 'openQuestion' | 'axes' | 'proposal' | 'terms' | 'exchange' | 'objection' | 'mitigation' | 'contingency' | 'summary' | 'owner' | 'written';
-export type Choice = { text: string; skill: string; points: number; trust: number; feedback: string; tension?: number; intent?: NegotiationIntent; interests?: string[]; freeText?: boolean; technique?: TechniqueId; timerLeft?: number; voice?: boolean; cues?: Cue[]; figure?: string; gaps?: GapId[]; hinted?: string; aiCredit?: { gap: GapId; quote: string }[] };
+export type Choice = { text: string; skill: string; points: number; trust: number; feedback: string; tension?: number; intent?: NegotiationIntent; interests?: string[]; freeText?: boolean; technique?: TechniqueId; timerLeft?: number; voice?: boolean; cues?: Cue[]; figure?: string; gaps?: GapId[]; hinted?: string; aiCredit?: { gap: GapId; quote: string }[]; at?: number };
 export type Turn = Choice & { reply: string };
 export const defaults: Record<Domain, Config> = {
  supplier: { domain: 'supplier', topic: 'Цена долгосрочного контракта', difficulty: 'Продвинутый', tone: 'Сдержанный', role: 'Директор по продажам', goal: 'Сохранить маржу и получить гарантированный объём' },
@@ -229,6 +229,8 @@ type StageAssessment = {
 };
 
 const STAGE_MAX=[17,17,19,19,17,18] as const;
+/** The best score a move can get on a stage, so a move can be judged as a share of it. */
+export function stageMaximum(stage:number){return STAGE_MAX[Math.max(0,Math.min(stage,SESSION_STAGE_COUNT-1))]}
 const SPEECH_FILLERS=/(?<![\p{L}\p{N}_])(?:ну|ээ+|эм+|как бы|в общем|короче|значит|вот|скажем так|так сказать)(?![\p{L}\p{N}_])/gu;
 const UNICODE_WORD_BOUNDARY='(?:(?<![\\p{L}\\p{N}_])(?=[\\p{L}\\p{N}_])|(?<=[\\p{L}\\p{N}_])(?![\\p{L}\\p{N}_]))';
 
@@ -448,7 +450,7 @@ function cuesOf(text:string,s:TextSignals):Cue[]{
 const NUMBER_WORD='(?:один|одн[аоу]|два|две|три|четыре|пять|шесть|семь|восемь|девять|десять|пятнадцать|двадцать|тридцать|сорок|пятьдесят|сто)';
 const FIGURE=new RegExp(`(?<![\\p{L}\\p{N}])(?:\\d+(?:[.,]\\d+)?|${NUMBER_WORD}(?:\\s+${NUMBER_WORD})?)\\s*(?:%|процент\\p{L}*|руб\\p{L}*|₽|тыс\\p{L}*|млн|миллион\\p{L}*|млрд|дн(?:я|ей|ь)|недел\\p{L}*|месяц\\p{L}*|квартал\\p{L}*|год(?:а|ов)?|лет|мвт)(?![\\p{L}])`,'iu');
 /** The first figure with a unit the player names («5%», «пять процентов», «три месяца»). */
-function figureOf(text:string){return text.match(FIGURE)?.[0].replace(/\s+/g,' ').trim()}
+export function figureOf(text:string){return text.match(FIGURE)?.[0].replace(/\s+/g,' ').trim()}
 export function threshold(config: Config) { return { 'Базовый': 52, 'Продвинутый': 65, 'Эксперт': 78 }[config.difficulty]; }
 const FEMALE_EXCEPTIONS = new Set(['илья', 'никита', 'кузьма', 'фома', 'лука', 'савва', 'данила']);
 /** Grammatical gender from the first name, so the opponent says «готов» or «готова» correctly. */

@@ -393,3 +393,56 @@ select{appearance:none;padding-right:46px!important;background-image:linear-grad
 .dashboard-stats>.stat-rank{margin-left:auto;font-size:12px}
 @media(max-width:900px){.dashboard-stats>.stat-rank{font-size:9px}}
 @media(max-width:700px){.dashboard-stats>.stat-rank{display:none}.dashboard-stats .demo-button{margin-left:auto}}
+/* Review: time of a move, the deal apart from the skill score, and the three judges. */
+.review-content blockquote time,.deal-review time,.judge-episode time{display:inline-block;margin-right:8px;padding:1px 7px;border-radius:999px;background:#eef4e6;color:#5f7d4f;font-size:11px;font-style:normal;font-variant-numeric:tabular-nums;vertical-align:1px}
+.theme-dark .review-content blockquote time,.theme-dark .deal-review time,.theme-dark .judge-episode time{background:#223128;color:#b9d3ab}
+.deal-status{display:flex;align-items:center;gap:9px;padding:11px 14px;border-radius:11px;border:1px solid #cfdcc2;background:#f3f8ec;color:#3f5f37;font-size:15px;margin-bottom:6px}
+.deal-status.status-none,.deal-status.status-early{border-color:#e2d3b3;background:#faf4e6;color:#7a5f2e}
+.deal-status.status-collapsed{border-color:#e7c3b8;background:#fbefeb;color:#8b3f2d}
+.theme-dark .deal-status{background:#1b2820;border-color:#3b5243;color:#cfe3c4}
+.theme-dark .deal-status.status-none,.theme-dark .deal-status.status-early{background:#2b2618;border-color:#5a4a2c;color:#e3cf9f}
+.theme-dark .deal-status.status-collapsed{background:#2e1c18;border-color:#6b3a2e;color:#f0bfb2}
+.deal-review .review-label{margin-top:16px}
+.deal-terms,.deal-interests,.deal-costs{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:8px}
+.deal-terms li{display:grid;grid-template-columns:150px minmax(0,1fr);gap:12px;align-items:baseline;padding:9px 12px;border:1px solid var(--line);border-radius:10px}
+.deal-kind{font-size:11px;letter-spacing:.3px;text-transform:uppercase;color:#6f9360}
+.deal-terms p{margin:0;font-size:14px;line-height:1.55;color:var(--ink)}
+.deal-interests li{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink)}
+.deal-interests svg{color:#6f9360;flex-shrink:0}
+.deal-costs li{display:flex;gap:9px;align-items:flex-start}
+.deal-costs li>svg{color:#c47b54;flex-shrink:0;margin-top:3px}
+.deal-costs strong{display:block;font-size:14px;font-weight:500;line-height:1.5;color:var(--ink)}
+.deal-costs small{display:block;margin-top:3px;font-size:12px;line-height:1.5;color:#8b987c}
+.deal-empty{margin:8px 0 0;font-size:13px;color:#8b987c}
+.judges-review .review-label{margin-bottom:10px}
+.judge-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start}
+.judge-card{display:grid;gap:10px;padding:14px;border-radius:12px;border:1px solid var(--line);background:#fffefb}
+.judge-card.chosen{border-color:#bcd0ad}
+.judge-card.rejected{border-color:#e2cdb9}
+.theme-dark .judge-card{background:#18221c}
+.theme-dark .judge-card.chosen{border-color:#3b5243}
+.theme-dark .judge-card.rejected{border-color:#5a4232}
+.judge-card header{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 10px;align-items:start}
+.judge-card header>svg{color:#6f9360;margin-top:2px}
+.judge-card header strong{display:block;font-size:14px;font-weight:600;color:var(--ink)}
+.judge-card header small{display:block;margin-top:3px;font-size:12px;line-height:1.45;color:#8b987c}
+.judge-card header em{grid-column:1/-1;justify-self:start;display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:12px;font-style:normal;font-weight:500}
+.judge-card.chosen header em{background:#e4efd9;color:#3f5f37}
+.judge-card.rejected header em{background:#f6e6d9;color:#8a4f2c}
+.theme-dark .judge-card.chosen header em{background:#223128;color:#cfe3c4}
+.theme-dark .judge-card.rejected header em{background:#33241a;color:#f0c7a8}
+.judge-comment{margin:0;font-size:13px;line-height:1.55;color:var(--ink)}
+.judge-episode{padding:9px 11px;border-radius:9px;border-left:3px solid #9cc083;background:#f5f9f0}
+.judge-episode.weak{border-left-color:#d38a63;background:#fbf3ed}
+.theme-dark .judge-episode{background:#1b2820}
+.theme-dark .judge-episode.weak{background:#2a1f19}
+.judge-episode>span{display:block;font-size:11px;letter-spacing:.3px;color:#8b987c;margin-bottom:5px}
+.judge-episode blockquote{margin:0;font-size:13px;line-height:1.5;color:var(--ink)}
+.judge-episode p{margin:6px 0 0;font-size:12px;line-height:1.5;color:#7e8c71}
+.judge-none{margin:0;font-size:12px;color:#8b987c}
+.judge-focus{font-size:11px;line-height:1.45;color:#9aa58c}
+.replay-note{border-left:3px solid #9cc083;padding-left:10px}
+@media(max-width:1100px){.judge-cards{grid-template-columns:1fr}}
+@media(max-width:700px){.deal-terms li{grid-template-columns:1fr;gap:4px}.deal-terms p,.deal-interests li,.deal-costs strong{font-size:13px}.deal-status{font-size:14px}}
+/* Short laptop screens: the deal and the judges need the height more than big headline numbers. */
+@media(min-width:701px) and (max-height:820px){.results{gap:14px}.results .heading p{display:none}.results .heading h1{font-size:30px}.result-metrics{padding:12px 0}.result-metrics .metric strong{font-size:24px}.review-tabs{padding:8px 10px}.review-tabs button{padding:6px 4px}.review-tabs button>span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.finale-line{padding-top:8px;padding-bottom:8px}}

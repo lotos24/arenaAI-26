@@ -106,7 +106,9 @@ try:
     assert 'Переговоры сорваны.' in collapse_state['text'],collapse_state
     for w,h in [(1366,768),(390,844),(375,667)]:
         size(w,h);fits('.review-tabs, .result-footer, .result-metrics')
-    click('.review-tabs button:nth-child(4)');has('Это моё последнее предложение')
+    click('.review-tabs button[title="Собрать пакет условий"]');has('Это моё последнее предложение')
+    # The deal and the judges open first on the review.
+    assert js('return !!document.querySelector(".deal-tab")&&!!document.querySelector(".judges-tab")'),'deal and judges tabs'
     button('Попробовать иначе')
     for _ in range(6):choose(BEST)
     button('Посмотреть разбор');has('Общий язык найден.');size(390,844);snap('results-mobile')

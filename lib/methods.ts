@@ -1,4 +1,13 @@
 import { choices, Choice, Config, GapId, discoveredInterests, finale, interestsFor, outcome, scenarios, sessionStageCount, stages, TechniqueId, tension, Turn } from './engine';
+import { dealSummary } from './deal';
+import { judgeSession } from './judges';
+
+/** Time of a move since the start of the meeting, «02:17». */
+export function formatClock(ms: number) {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+}
+const stamp = (turn: { at?: number }) => turn.at === undefined ? '' : `${formatClock(turn.at)} — `;
 
 /** Negotiation methods behind every move, so players learn to name what they do. */
 export type Technique = { id: TechniqueId; label: string; kind: 'method' | 'risk' };
@@ -120,11 +129,21 @@ export function sessionMemo(session: SessionLike) {
   const strengths = turns.map((turn, index) => ({ turn, index })).filter(({ turn }) => turn.points >= 15);
   const growth = turns.map((turn, index) => ({ turn, index })).filter(({ turn }) => turn.points < 15);
   const label = (turn: Turn) => { const technique = techniqueFor(turn); return technique ? `${turn.skill} (${technique.label})` : turn.skill; };
+  const deal = dealSummary(config, turns, stageTotal);
+  const judges = judgeSession(config, turns, stageTotal);
   return [
     `Памятка по переговорам — «${config.topic}»`,
     `Дата: ${new Date(session.ended ?? session.started).toLocaleDateString('ru-RU')} · ${scenarios[config.domain].label} · ${config.difficulty} · тон: ${config.tone.toLowerCase()}`,
     `Итог: ${verdict}. ${finale(config, result, turns.length >= stageTotal)}`,
     `Результат: ${result.score}/100 · Доверие: ${result.trust}% · Напряжённость: ${tension(config, turns)}% · Этапов: ${turns.length}/${stageTotal}`,
+    '',
+    `Что договорились (${deal.label.toLowerCase()}):`,
+    ...(deal.terms.length ? deal.terms.map(term => `• ${stamp(term)}«${term.text}»`) : ['• Конкретные условия в репликах не зафиксированы.']),
+    'Цена результата:',
+    ...(deal.costs.length ? deal.costs.map(cost => `• ${stamp(cost)}${cost.text}`) : ['• Результат получен без уступок впустую и без потерь доверия.']),
+    '',
+    'Три судьи:',
+    ...judges.map(judge => `${judge.chosen ? '✓' : '✗'} ${judge.title} — ${judge.comment}${judge.weak ? ` Слабый эпизод: ${stamp(judge.weak)}«${judge.weak.quote}».` : ''}`),
     '',
     `Скрытые интересы собеседника (${known.size}/${interestsFor(config).length}):`,
     ...interestsFor(config).map(item => known.has(item.id) ? `✓ ${item.label}` : `✗ ${item.label} — ${item.hint}`),
@@ -133,10 +152,10 @@ export function sessionMemo(session: SessionLike) {
     ...harvardAssessment(config, turns).map(item => `${STATUS_MARK[item.status]} ${item.label}: ${item.detail}`),
     '',
     'Сильные стороны:',
-    ...(strengths.length ? strengths.map(({ turn, index }) => `• Этап «${stages[index]}»: ${label(turn)}.`) : ['• Пока нет ходов на высокий балл — начните с признания позиции собеседника.']),
+    ...(strengths.length ? strengths.map(({ turn, index }) => `• ${stamp(turn)}Этап «${stages[index]}»: ${label(turn)}.`) : ['• Пока нет ходов на высокий балл — начните с признания позиции собеседника.']),
     '',
     'Что улучшить:',
-    ...(growth.length ? growth.map(({ turn, index }) => `• Этап «${stages[index]}»: ${turn.feedback} Попробуйте: «${choices(config, index)[0].text}»`) : ['• Все ходы сильные — повторите сценарий на уровне сложности выше.']),
+    ...(growth.length ? growth.map(({ turn, index }) => `• ${stamp(turn)}Этап «${stages[index]}»: ${turn.feedback} Попробуйте: «${choices(config, index)[0].text}»`) : ['• Все ходы сильные — повторите сценарий на уровне сложности выше.']),
   ].join('\n');
 }
 
