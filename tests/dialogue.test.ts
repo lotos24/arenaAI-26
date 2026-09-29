@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Config, defaults, evaluateText, outcome, respond, tension, Turn, withInterests } from '../lib/engine';
 import { SCENARIO_PRESETS } from '../lib/scenario-library';
-import { buildLocalPrompt, needsScriptedReply, sharesMeaning } from '../lib/web-llm';
+import { buildLocalPrompt, needsScriptedReply, reversesStance, sanitizeLocalReply, sharesMeaning, swapsRoles } from '../lib/web-llm';
 
 const preset = (id: string) => SCENARIO_PRESETS.find(item => item.id === id)!.config;
 /** Plays free-text lines the way the arena does: evaluate, touch interests, reply with the current trust. */
@@ -86,7 +86,8 @@ test('the opponent speaks in the persona’s gender', () => {
 
 test('a strong final move closes with the agreement', () => {
   const reply = respond(defaults.supplier, 5, evaluateText('Итак, 8%, объём на год, ответственный с нашей стороны — Иванов, протокол до пятницы', 'supplier', 5), 60);
-  assert.match(reply, /(?:Да, так и зафиксируем|Договорились, картина общая)\.$/);
+  assert.match(reply, /(?:Да, так и зафиксируем|Договорились, картина общая)\. [^.]+\.$/);
+  assert.ok(reply.indexOf('8%') < reply.search(/Да, так и зафиксируем|Договорились/), 'the agreement closes the reply');
 });
 
 test('a greeting alone is weak but not hostile', () => {
@@ -108,10 +109,35 @@ test('the model is asked to answer the player’s question and keep the gist', (
   const config = preset('alabuga-polytech');
   const move = withInterests(config, 0, evaluateText('Добрый день! Что для вас важнее всего в этом проекте?', 'career', 0), []);
   const [, user] = buildLocalPrompt(config, [], move, 0);
-  assert.match(user.content, /ответь на него по существу/);
+  assert.match(user.content, /ответ на него уже есть в сути/);
   assert.match(user.content, /Суть твоего ответа: «Здравствуйте\./);
   const offer = buildLocalPrompt(defaults.supplier, [], evaluateText('Мы готовы принять максимум 5 процентов', 'supplier', 0), 0)[1];
   assert.match(offer.content, /назвал цифру «5 процентов»/);
+});
+
+test('model replies that speak for the player are rejected', () => {
+  const anchor = 'Отвечу прямо. Мой главный KPI — трудоустройство выпускников на заводы зоны. Если вы поможете его поднять, мы договоримся.';
+  const player = 'Что для вас будет показателем успеха через год?';
+  assert.ok(swapsRoles('Хорошо, Алина. Могу я спросить, почему именно трудоустройство выпускников для вас такой важный показатель успеха?', anchor, 'Алина Хасанова'));
+  assert.ok(swapsRoles('Здравствуйте, Алина. Хороший вопрос.', anchor, 'Алина Хасанова'), 'the persona’s own name');
+  assert.equal(sanitizeLocalReply('Почему трудоустройство выпускников так важно для вашего кластера?', anchor, player, 'Алина Хасанова'), null);
+  assert.ok(!swapsRoles('Мой главный KPI — трудоустройство выпускников. Готовы ли вы помочь его поднять?', anchor, 'Алина Хасанова'));
+  assert.ok(!swapsRoles('Что вы готовы дать взамен за ваши условия?', 'И что вы готовы дать взамен?', 'Ильдар Сафин'), 'the gist itself asks');
+  assert.ok(sanitizeLocalReply('Для меня главный показатель — трудоустройство выпускников на заводы зоны. Поможете его поднять — договоримся.', anchor, player, 'Алина Хасанова'));
+  const greeting = 'Здравствуйте. Хороший вопрос. Многое для меня зависит от темы, которую мы ещё не обсуждали: служебное жильё в Елабуге.';
+  assert.equal(sanitizeLocalReply('Здравствуйте, Алина. Хороший вопрос. Многое для меня зависит от темы, которую мы ещё не обсуждали: служебное жильё в Елабуге.', greeting, 'Добрый день, Алина! Что для вас важнее всего?', 'Алина Хасанова'), greeting, 'an echoed vocative is cut, the rest is kept');
+});
+
+test('meta prefixes are cut and a reversed agreement is rejected', () => {
+  const anchor = '5 процентов — это ваша цифра. Мне пока неясно, почему она должна меня устроить.';
+  assert.equal(sanitizeLocalReply('Вот пример ответа: Ты: 5 процентов — это ваша цифра, и мне неясно, почему она должна меня устроить.', anchor), '5 процентов — это ваша цифра, и мне неясно, почему она должна меня устроить.');
+  const gist = 'Скажу прямо: мне сложно раскрыться, пока разговор идёт вокруг требований. Спросите, что стоит за моей позицией, — я отвечу.';
+  assert.equal(sanitizeLocalReply(`Нам нужна скидка. Ты: ${gist}`, gist, 'Нам нужна скидка'), gist, 'a replayed dialogue keeps only the reply');
+  assert.equal(sanitizeLocalReply('10% — это мой рабочий ориентир. Это понятно и предсказуемо, что риск выглядит управляемым. Мы можем договориться на таком уровне, если я понимаю, как вам важно регулярное обсуждение цен. Понимаю, что вы хотите контролировать риски, но не вижу необходимости, чтобы они были огромными.', '10% — принимаю как рабочий ориентир. С таким механизмом риск выглядит управляемым.'), null, 'a rambling retelling');
+  const closing = '8% — принимаю как рабочий ориентир. Да, так и зафиксируем. Жду протокол — сверю пункты со своей стороны.';
+  assert.ok(reversesStance('8% — мой ориентир, но давайте пересмотрим этот пункт в свете всего нашего диалога.', closing));
+  assert.ok(!reversesStance('Принимаю 8% как ориентир, фиксируем. Протокол сверю, как получу.', closing));
+  assert.ok(!reversesStance('Коридор и пересмотр цены раз в квартал снимают мои опасения.', 'С таким механизмом риск выглядит управляемым. Это снимает большую часть моих опасений.'));
 });
 
 test('a model reply that answers the player’s words may keep less of the gist', () => {

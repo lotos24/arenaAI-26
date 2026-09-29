@@ -59,28 +59,30 @@ export function buildLocalPrompt(config: Config, turns: Turn[], choice: Choice, 
   const mood = pressure >= 70 ? (female ? 'ты раздражена и близка к тому, чтобы прервать встречу' : 'ты раздражён и близок к тому, чтобы прервать встречу')
     : pressure >= 45 ? (female ? 'ты насторожена' : 'ты насторожен') : (female ? 'ты открыта к диалогу' : 'ты открыт к диалогу');
   const asked = choice.cues?.some(cue => cue === 'question' || cue === 'interestQuestion' || cue === 'checkQuestion');
-  // The model answers the player's words; the scenario reply fixes what the answer must mean, so a small model
-  // neither agrees to terms the scenario does not allow nor drifts away. The task comes last, after the gist,
-  // because small models copy whatever line stands right before it.
+  // The scenario reply already answers the player's words (question, figure, offer); the model voices it in its own
+  // words. Asked to answer freely, the 1.5B model swapped roles and reversed agreements, so the gist stays fixed.
+  // The task comes last, after the gist, because small models copy whatever line stands right before it.
   return [
     { role: 'system', content: [
       `Ты — ${clip(scenario.person, 60)}, ${clip(config.role.toLowerCase(), 120)}. Идут деловые переговоры на тему «${clip(config.topic, 120)}». Говори о себе в ${female ? 'женском' : 'мужском'} роде и обращайся к собеседнику на «вы».`,
       `Твоя цель: ${clip(config.goal, 200)}. Тон: ${config.tone.toLowerCase()}. Сейчас ${mood}.`,
       'Отвечай только по-русски, от первого лица, 2–3 коротких предложения живой деловой речи. Без списков, без кавычек, без пояснений в скобках.',
       'Не упоминай, что ты модель, программа или симуляция. Не соглашайся с тем, что игрок ещё не предложил, и не повторяй его слова.',
+      `${clip(scenario.person.split(/\s+/)[0] ?? '', 30)} — это ты: не называй собеседника этим именем. Говори о своих интересах от первого лица и не расспрашивай собеседника о них.`,
     ].join(' ') },
     { role: 'user', content: [
       history ? `Ход разговора:\n${history}` : `Ты начал разговор словами: ${clip(scenario.opening, 300)}`,
       `Этап: ${stages[stage]}. Собеседник только что сказал тебе: «${clip(choice.text, 220)}»`,
-      asked ? 'Он задал вопрос — ответь на него по существу.' : choice.figure ? `Он назвал цифру «${clip(choice.figure, 40)}» — отреагируй на неё.` : '',
+      asked ? 'Он задал вопрос — ответ на него уже есть в сути ниже.' : choice.figure ? `Он назвал цифру «${clip(choice.figure, 40)}» — реакция на неё уже есть в сути ниже.` : '',
       touched.length ? `Собеседник затронул твой скрытый интерес (${touched.join('; ')}) — признай это.` : '',
       `Суть твоего ответа: «${clip(anchor)}»`,
-      'Ответь собеседнику своими словами, 2–3 предложения, и сохрани эту суть. Не соглашайся на то, чего в ней нет, и не повторяй его фразы. Выведи только текст реплики.',
+      'Скажи эту суть своими словами живой речью, 2–4 коротких предложения. Не меняй смысл: не добавляй согласий, отказов, цифр и вопросов, которых в ней нет. Не повторяй фразы собеседника. Выведи только текст реплики.',
     ].filter(Boolean).join('\n\n') },
   ];
 }
 
-const STOP_STEMS = new Set(['котор', 'также', 'между', 'чтобы', 'может', 'будет', 'очень', 'давай', 'нужно', 'важно', 'можно', 'сейча', 'этого', 'этому', 'всего']);
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const STOP_STEMS =new Set(['котор', 'также', 'между', 'чтобы', 'может', 'будет', 'очень', 'давай', 'нужно', 'важно', 'можно', 'сейча', 'этого', 'этому', 'всего']);
 const stemsOf = (text: string) => new Set((text.toLowerCase().replace(/ё/g, 'е').match(/[а-я]{5,}/g) ?? []).map(word => word.slice(0, 5)).filter(stem => !STOP_STEMS.has(stem)));
 /**
  * A reply must share meaning with the scripted anchor: small models otherwise drift or swap roles.
@@ -109,6 +111,26 @@ export function echoesPlayer(reply: string, player: string, anchor = '') {
   return own.size > 0 && copied / own.size >= .6;
 }
 /**
+ * A small model answering freely sometimes speaks for the player: it calls the persona by name
+ * («Хорошо, Алина») or turns the opponent's own statement into a question about «ваш» interest.
+ */
+export function swapsRoles(reply: string, anchor: string, person: string) {
+  const name = (person.trim().split(/\s+/)[0] ?? '').toLowerCase().replace(/ё/g, 'е');
+  const text = reply.toLowerCase().replace(/ё/g, 'е');
+  if (name.length >= 3 && new RegExp(`(?<![\\p{L}])${escapeRegExp(name.slice(0, Math.max(3, name.length - 1)))}\\p{L}{0,3}(?![\\p{L}])`, 'u').test(text)) return true;
+  if (anchor.includes('?')) return false;
+  const questions = text.match(/[^.!?]*\?/g) ?? [];
+  return questions.some(question => /(?<![\p{L}])(?:вас|вам|ваш\p{L}*)(?![\p{L}])/u.test(question));
+}
+const REFUSAL = /(?<![\p{L}])(?:не готов\p{L}*|не могу|не можем|не соглас\p{L}*|пересмотрим (?:этот|эти|данный) пункт\p{L}*|откаж\p{L}*|отказ\p{L}*|против)(?![\p{L}])/u;
+const AGREEMENT = /(?<![\p{L}])(?:договорились|зафиксируем|согласен|согласна|согласны|принимаю|поддержим|можем предоставить|снимает)(?![\p{L}])/u;
+/** An agreeing gist must not come back as a refusal («давайте пересмотрим этот пункт» instead of «так и зафиксируем»). */
+export function reversesStance(reply: string, anchor: string) {
+  const gist = anchor.toLowerCase().replace(/ё/g, 'е');
+  const text = reply.toLowerCase().replace(/ё/g, 'е');
+  return AGREEMENT.test(gist) && !REFUSAL.test(gist) && REFUSAL.test(text);
+}
+/**
  * Conflict moves keep their deterministic reply: small models tend to agree with ultimatums.
  * A weak or clumsy free-text move still goes to the model, so the opponent answers the player's own words.
  */
@@ -117,17 +139,29 @@ export function needsScriptedReply(choice: Choice) {
   return choice.trust < 0 || ['insult', 'threat', 'demand', 'silence', 'vague'].includes(choice.intent ?? '');
 }
 
-/** Cleans a model answer; returns null when it is unusable (wrong script, empty, too short, off the anchor's meaning). */
-export function sanitizeLocalReply(raw: string, anchor?: string, player?: string) {
-  let text = raw.replace(/\*\*|__|`/g, '').replace(/^\s*(?:ты|собеседник|ответ|[А-ЯЁA-Z][а-яёa-z]+(?: [А-ЯЁA-Z][а-яёa-z]+)?)\s*:\s*/u, '').replace(/^["«„]+|["»“]+$/g, '').replace(/\s+/g, ' ').trim();
+/** Cleans a model answer; returns null when it is unusable (wrong script, empty, too short, off the anchor's meaning, swapped roles). */
+export function sanitizeLocalReply(raw: string, anchor?: string, player?: string, person?: string) {
+  let text = raw.replace(/\*\*|__|`/g, '').replace(/^\s*(?:вот\s+)?(?:пример\s+)?(?:мой\s+)?(?:ответ\p{L}*|реплик\p{L}*)\s*:\s*/iu, '').replace(/^\s*(?:ты|собеседник|ответ|[А-ЯЁA-Z][а-яёa-z]+(?: [А-ЯЁA-Z][а-яёa-z]+)?)\s*:\s*/u, '').replace(/^["«„]+|["»“]+$/g, '').replace(/\s+/g, ' ').trim();
+  if (/пример ответа|как языков|я —? ?(?:ии|модел)/iu.test(text)) return null;
+  // «Нам нужна скидка. Ты: Скажу прямо…» — the model replayed the dialogue; only the part after the last role mark is the reply.
+  const marks = [...text.matchAll(/(?:^|\s)(?:Ты|Собеседник|Ответ)\s*:\s*/gu)];
+  if (marks.length) { const last = marks[marks.length - 1]; text = text.slice(last.index! + last[0].length).trim(); }
   if (/[぀-ヿ㐀-鿿가-힯]/.test(text)) return null;
   const letters = text.match(/\p{L}/gu) ?? [];
   const cyrillic = text.match(/[а-яё]/giu) ?? [];
   if (letters.length < 15 || cyrillic.length / letters.length < .8) return null;
+  // «Здравствуйте, Алина» from Алина herself: the model echoed the player's greeting, the rest of the reply may be fine.
+  const first = person?.trim().split(/\s+/)[0];
+  const name = first ? escapeRegExp(first) : '';
+  if (name) text = text.replace(new RegExp(`,\\s*${name}(?=[.!?,])|^${name},\\s*`, 'gu'), '').replace(/^\p{Ll}/u, letter => letter.toUpperCase());
   const sentences = text.match(/[^.!?]+[.!?]+/g) ?? [text];
-  text = sentences.slice(0, 4).join(' ').trim();
+  text = sentences.slice(0, 4).map(sentence => sentence.trim()).join(' ');
   if (anchor && !sharesMeaning(text, anchor, player)) return null;
+  // A retelling much longer than the gist has wandered off: the 1.5B model starts guessing the player's motives.
+  if (anchor && text.length > anchor.length * 1.8 + 60) return null;
   if (player && echoesPlayer(text, player, anchor)) return null;
+  if (person && swapsRoles(text, anchor ?? '', person)) return null;
+  if (anchor && reversesStance(text, anchor)) return null;
   return text.length > 650 ? `${text.slice(0, 647).replace(/\s+\S*$/, '')}…` : text;
 }
 
@@ -232,7 +266,7 @@ export async function generateOpponentReplyWebLLM(config: Config, turns: Turn[],
     };
     const timeout = new Promise<never>((_, reject) => { timer = setTimeout(() => { interruptLocalGeneration(); reject(new Error('timeout')); }, GENERATION_TIMEOUT_MS); });
     const raw = await Promise.race([collect(), timeout]);
-    const text = sanitizeLocalReply(raw, anchor, choice.text);
+    const text = sanitizeLocalReply(raw, anchor, choice.text, scenarioFor(config).person);
     if (!text) console.debug('[arena] local model reply rejected:', raw);
     return text ? { text, source: 'webllm', fallback: false } : { ...scripted, fallback: true };
   } catch {
