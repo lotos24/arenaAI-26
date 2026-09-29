@@ -11,7 +11,8 @@ function run(command, args, cwd = project, capture = false, env = process.env) {
   if (result.status !== 0) throw new Error(`${command} ${args.join(' ')} failed`);
   return result.stdout?.trim() || '';
 }
-const remote = run('git', ['remote', 'get-url', 'origin'], project, true);
+// DEPLOY_REMOTE publishes to another configured remote (for example a fork) without touching origin.
+const remote = run('git', ['remote', 'get-url', process.env.DEPLOY_REMOTE || 'origin'], project, true);
 const match = remote.match(/github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?$/);
 if (!match) throw new Error('origin must point to the GitHub repository being published.');
 const [, owner, repo] = match;
