@@ -10,7 +10,7 @@ export type TechniqueId = 'empathy' | 'spinSituation' | 'spinProblem' | 'harvard
 export type Cue = 'greeting' | 'interestQuestion' | 'checkQuestion' | 'question' | 'empathy' | 'proposal' | 'exchange' | 'concession';
 /** The first thing a free-text move still lacks for its stage; the opponent asks for it in their own voice. */
 export type GapId = 'acknowledge' | 'together' | 'common' | 'positions' | 'check' | 'boundary' | 'openQuestion' | 'axes' | 'proposal' | 'terms' | 'exchange' | 'objection' | 'mitigation' | 'contingency' | 'summary' | 'owner' | 'written';
-export type Choice = { text: string; skill: string; points: number; trust: number; feedback: string; tension?: number; intent?: NegotiationIntent; interests?: string[]; freeText?: boolean; technique?: TechniqueId; timerLeft?: number; voice?: boolean; cues?: Cue[]; figure?: string; gaps?: GapId[]; hinted?: string };
+export type Choice = { text: string; skill: string; points: number; trust: number; feedback: string; tension?: number; intent?: NegotiationIntent; interests?: string[]; freeText?: boolean; technique?: TechniqueId; timerLeft?: number; voice?: boolean; cues?: Cue[]; figure?: string; gaps?: GapId[]; hinted?: string; aiCredit?: { gap: GapId; quote: string }[] };
 export type Turn = Choice & { reply: string };
 export const defaults: Record<Domain, Config> = {
  supplier: { domain: 'supplier', topic: 'Цена долгосрочного контракта', difficulty: 'Продвинутый', tone: 'Сдержанный', role: 'Директор по продажам', goal: 'Сохранить маржу и получить гарантированный объём' },
@@ -374,10 +374,8 @@ export function evaluateText(text: string, domain: Domain, stage: number, previo
   return heard(make('Одностороннее требование',5,-10,'Требование обозначает вашу позицию, но не даёт собеседнику встречной ценности или выбора.',19,'demand'));
  }
  const assessment=assessStage(stage,signals);const maximum=STAGE_MAX[Math.max(0,Math.min(stage,SESSION_STAGE_COUNT-1))];const quality=assessment.points/maximum;
- // A polite move that misses the stage is weak, but it is not an attack: no loss of trust, less tension.
  const polite=quality<.5&&(signals.rapport||signals.empathy);
- const trust=quality>=.85?10:quality>=.68?6:quality>=.5?2:polite?0:-4;
- const tensionDelta=quality>=.85?-9:quality>=.68?-4:quality>=.5?4:polite?6:11;
+ const {trust,tension:tensionDelta}=qualityEffects(quality,polite);
  const positive=assessment.strengths.length?`Сработало: ${assessment.strengths.slice(0,3).join(', ')}.`:'Ход пока не решает задачу этого этапа.';
  const advice=assessment.improvements[0]??'Формулировка сочетает несколько сильных элементов этапа.';
  const intent=assessment.points<=7&&!signals.openQuestion&&!signals.proposal?'vague':assessment.intent;
@@ -387,6 +385,52 @@ export function evaluateText(text: string, domain: Domain, stage: number, previo
   return heard({...make(assessment.skill,Math.min(maximum,assessment.points+2),Math.max(trust,2),`Вы спокойно опёрлись на свою альтернативу (BATNA): это усиливает позицию без угроз. ${positive} ${advice}`,Math.min(tensionDelta,2),intent),technique:'batna',...gaps});
  }
  return heard({...make(assessment.skill,assessment.points,trust,`${positive} ${advice}`,tensionDelta,intent),...gaps});
+}
+/** Trust and tension that a free-text move of a given quality (share of the stage maximum) brings. */
+function qualityEffects(quality:number,polite:boolean){
+ // A polite move that misses the stage is weak, but it is not an attack: no loss of trust, less tension.
+ return {trust:quality>=.85?10:quality>=.68?6:quality>=.5?2:polite?0:-4,tension:quality>=.85?-9:quality>=.68?-4:quality>=.5?4:polite?6:11};
+}
+/** What each missing piece means, worded for the AI assessor and for the player's feedback. */
+export const GAP_CRITERIA: Record<GapId,string> = {
+ acknowledge:'признаёт позицию или трудность собеседника',
+ together:'приглашает вместе искать решение',
+ common:'называет общую цель или ценность отношений',
+ positions:'обозначает позиции обеих сторон',
+ check:'проверяет, одинаково ли стороны понимают условия',
+ boundary:'называет свою границу или ограничение',
+ openQuestion:'задаёт открытый вопрос о причинах или приоритетах собеседника',
+ axes:'затрагивает несколько параметров: сроки, объём, ресурсы',
+ proposal:'делает конкретное предложение',
+ terms:'связывает минимум два условия',
+ exchange:'предлагает встречный обмен: что даёт взамен',
+ objection:'называет риск или опасение собеседника',
+ mitigation:'предлагает способ снизить риск',
+ contingency:'предлагает условие пересмотра или контрольную точку',
+ summary:'подводит итог договорённости',
+ owner:'называет ответственного и срок',
+ written:'предлагает письменное подтверждение или проверяет согласие',
+};
+/** Points per element the AI assessor confirms, and how many it may confirm in one move. */
+export const AI_CREDIT_POINTS = 2;
+export const AI_CREDIT_LIMIT = 2;
+/**
+ * Adds the elements the on-device model confirmed with a quote from the move. The keyword score stays the base:
+ * the model can only credit missing pieces, a few points each, within the stage maximum, and the feedback names the quote.
+ */
+export function applyAiCredit(c:Choice,stage:number,confirmed:{gap:GapId;quote:string}[]):Choice{
+ if(!c.freeText||!c.gaps?.length)return c;
+ const credit=confirmed.filter((item,index)=>c.gaps!.includes(item.gap)&&confirmed.findIndex(other=>other.gap===item.gap)===index).slice(0,AI_CREDIT_LIMIT);
+ if(!credit.length)return c;
+ const current=Math.max(0,Math.min(stage,SESSION_STAGE_COUNT-1));const maximum=STAGE_MAX[current];
+ const points=Math.min(maximum,c.points+AI_CREDIT_POINTS*credit.length);
+ const polite=Boolean(c.cues?.includes('greeting')||c.cues?.includes('empathy'));
+ const effects=qualityEffects(points/maximum,polite);
+ const batna=c.technique==='batna';
+ const credited=credit.map(item=>`${GAP_CRITERIA[item.gap]} («${item.quote}»)`).join('; ');
+ return {...c,points,trust:batna?Math.max(effects.trust,2):effects.trust,tension:batna?Math.min(effects.tension,2):effects.tension,
+  gaps:c.gaps.filter(gap=>!credit.some(item=>item.gap===gap)),aiCredit:credit,
+  feedback:`${c.feedback} Локальная нейросеть засчитала то, что ключевые слова не распознали: ${credited}.`};
 }
 function cuesOf(text:string,s:TextSignals):Cue[]{
  const cues:Cue[]=[];

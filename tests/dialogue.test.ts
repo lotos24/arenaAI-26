@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { choices, Config, defaults, evaluateText, outcome, respond, tension, Turn, withInterests } from '../lib/engine';
+import { applyAiCredit, choices, Config, defaults, evaluateText, outcome, respond, tension, Turn, withInterests } from '../lib/engine';
 import { strengthenMove } from '../lib/methods';
 import { SCENARIO_PRESETS } from '../lib/scenario-library';
-import { buildLocalPrompt, needsScriptedReply, reversesStance, sanitizeLocalReply, sharesMeaning, swapsRoles } from '../lib/web-llm';
+import { buildAssessmentPrompt, buildLocalPrompt, needsScriptedReply, parseAssessment, reversesStance, sanitizeLocalReply, sharesMeaning, swapsRoles } from '../lib/web-llm';
 
 const preset = (id: string) => SCENARIO_PRESETS.find(item => item.id === id)!.config;
 /** Plays free-text lines the way the arena does: evaluate, touch interests, reply with the current trust. */
@@ -167,4 +167,25 @@ test('the review strengthens the player’s own phrase instead of replacing it',
   const risk = strengthenMove(evaluateText('Давайте добавим пилот на квартал', 'supplier', 4))!;
   assert.match(risk.text, /^Понимаю, что вас беспокоит риск\./, 'acknowledging the risk goes first');
   assert.equal(strengthenMove(choices('supplier', 3)[0]), null, 'answer options keep the ready-made example');
+});
+
+test('the AI assessor credits only quoted, real elements and stays within limits', () => {
+  const move = evaluateText('Мы бы хотели цену 5%, а сами обеспечим загрузку вашего цеха на весь год', 'supplier', 3);
+  assert.ok(move.gaps?.includes('exchange'), 'keywords miss the exchange');
+  const index = move.gaps!.indexOf('exchange') + 1;
+  const [, user] = buildAssessmentPrompt(move, 3);
+  assert.match(user.content, /встречный обмен/);
+  assert.deepEqual(parseAssessment(`${index}: «сами обеспечим загрузку вашего цеха»`, move), [{ gap: 'exchange', quote: 'сами обеспечим загрузку вашего цеха' }]);
+  assert.deepEqual(parseAssessment(`${index}: «дадим скидку на следующий заказ»`, move), [], 'an invented quote is ignored');
+  assert.deepEqual(parseAssessment(`${index}: «цену»`, move), [], 'a one-word quote is not evidence');
+  assert.deepEqual(parseAssessment('нет', move), []);
+  const credited = applyAiCredit(move, 3, parseAssessment(`${index}: «сами обеспечим загрузку вашего цеха»`, move));
+  assert.equal(credited.points, move.points + 2);
+  assert.ok(!credited.gaps?.includes('exchange'));
+  assert.ok(credited.trust >= move.trust);
+  assert.match(credited.feedback, /Локальная нейросеть засчитала.*«сами обеспечим загрузку вашего цеха»/);
+  const all = move.gaps!.map((gap, i) => `${i + 1}: «${['мы бы хотели цену', 'сами обеспечим загрузку', 'загрузку вашего цеха', 'на весь год'][i] ?? 'на весь год'}»`).join('\n');
+  assert.ok(applyAiCredit(move, 3, parseAssessment(all, move)).points - move.points <= 4, 'at most two credits');
+  const option = choices('supplier', 3)[1];
+  assert.equal(applyAiCredit(option, 3, [{ gap: 'exchange', quote: 'любая цитата' }]), option, 'answer options are never re-scored');
 });

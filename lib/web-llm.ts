@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { InitProgressReport, MLCEngineInterface } from '@mlc-ai/web-llm';
-import { Choice, Config, interestsFor, outcome, personaGender, respond, scenarioFor, SESSION_STAGE_COUNT, stages, tension, Turn } from './engine';
+import { AI_CREDIT_LIMIT, Choice, Config, GAP_CRITERIA, GapId, interestsFor, outcome, personaGender, respond, scenarioFor, SESSION_STAGE_COUNT, stages, tension, Turn } from './engine';
 
 export { personaGender };
 
@@ -23,6 +23,7 @@ const TIER_KEY = 'arena-local-model';
 const MAX_HISTORY_TURNS = 4;
 const MAX_FIELD = 400;
 const GENERATION_TIMEOUT_MS = 25_000;
+const ASSESSMENT_TIMEOUT_MS = 15_000;
 
 export type LocalAiStatus = 'checking' | 'unsupported' | 'idle' | 'loading' | 'ready' | 'error';
 type LocalAiState = { status: LocalAiStatus; enabled: boolean; cached: boolean; progress: number; stage: string; tier: LocalModelTier; f16: boolean; model: string; gpu: string; error: string };
@@ -79,6 +80,43 @@ export function buildLocalPrompt(config: Config, turns: Turn[], choice: Choice, 
       'Скажи эту суть своими словами живой речью, 2–4 коротких предложения. Не меняй смысл: не добавляй согласий, отказов, цифр и вопросов, которых в ней нет. Не повторяй фразы собеседника. Выведи только текст реплики.',
     ].filter(Boolean).join('\n\n') },
   ];
+}
+
+/** Messages for the second assessor: it checks only the elements the keyword score did not find. */
+export function buildAssessmentPrompt(choice: Choice, stage: number): LocalMessage[] {
+  const gaps = choice.gaps ?? [];
+  return [
+    { role: 'system', content: 'Ты — строгий эксперт по деловым переговорам. Ты проверяешь реплику участника по критериям и отвечаешь только в заданном формате, без пояснений.' },
+    { role: 'user', content: [
+      `Этап переговоров: ${stages[Math.max(0, Math.min(stage, SESSION_STAGE_COUNT - 1))]}.`,
+      `Реплика участника: «${clip(choice.text, 500)}»`,
+      `Критерии:\n${gaps.map((gap, index) => `${index + 1}. Участник ${GAP_CRITERIA[gap]}.`).join('\n')}`,
+      'Для каждого критерия, который в реплике действительно выполнен, выведи отдельную строку: номер: «точная цитата из реплики». Если ни один критерий не выполнен, выведи одно слово: нет. Не придумывай цитаты и не засчитывай то, чего в реплике нет.',
+    ].join('\n\n') },
+  ];
+}
+const normalizeQuote = (text: string) => text.toLowerCase().replace(/ё/g, 'е').replace(/[«»"“”„.,!?;:—–-]/g, ' ').replace(/\s+/g, ' ').trim();
+/**
+ * Reads «номер: «цитата»» lines. A credit counts only when its quote really occurs in the player's words and
+ * has at least two words; one quote cannot back two criteria, and no more than AI_CREDIT_LIMIT are taken.
+ */
+export function parseAssessment(raw: string, choice: Choice): { gap: GapId; quote: string }[] {
+  const gaps = choice.gaps ?? [];
+  const said = normalizeQuote(choice.text);
+  const found: { gap: GapId; quote: string }[] = [];
+  const used = new Set<string>();
+  for (const line of raw.split(/\n+/)) {
+    const match = line.match(/^\s*(\d+)\s*[:.)\-–—]\s*[«"“„]([^»"”]+)[»"”]/u);
+    if (!match) continue;
+    const gap = gaps[Number(match[1]) - 1];
+    const quote = match[2].trim().replace(/[.,;:]+$/u, '');
+    const key = normalizeQuote(quote);
+    if (!gap || key.split(' ').length < 2 || !said.includes(key) || used.has(key) || found.some(item => item.gap === gap)) continue;
+    used.add(key);
+    found.push({ gap, quote });
+    if (found.length >= AI_CREDIT_LIMIT) break;
+  }
+  return found;
 }
 
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -250,29 +288,49 @@ export function interruptLocalGeneration() { if (!generating) return; try { void
  * Opponent reply from the on-device model. Never throws: without WebGPU, before the model is loaded,
  * on a timeout or an unusable answer it returns the scenario engine's reply.
  */
-export async function generateOpponentReplyWebLLM(config: Config, turns: Turn[], choice: Choice, stage: number): Promise<{ text: string; source: 'webllm' | 'script'; fallback: boolean }> {
-  const anchor = respond(config, stage, choice, outcome(config, [...turns, { ...choice, reply: '' }]).trust);
-  const scripted = { text: anchor, source: 'script' as const, fallback: false };
-  if (!localAiReady() || needsScriptedReply(choice) || validateLocalContext(config, turns, choice, stage)) return scripted;
+/** Runs one streamed request on the loaded model; only this running request can be interrupted. */
+async function runLocal(messages: LocalMessage[], maxTokens: number, temperature: number, timeoutMs: number) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   generating = true;
   try {
     // Streaming: WebLLM clears a stale interrupt at the start of a streamed request, so one bad interrupt cannot mute later replies.
     const collect = async () => {
-      const chunks = await engine!.chat.completions.create({ messages: buildLocalPrompt(config, turns, choice, stage), max_tokens: 160, temperature: .6, top_p: .9, stream: true });
+      const chunks = await engine!.chat.completions.create({ messages, max_tokens: maxTokens, temperature, top_p: .9, stream: true });
       let raw = '';
       for await (const chunk of chunks) raw += chunk.choices[0]?.delta?.content ?? '';
       return raw;
     };
-    const timeout = new Promise<never>((_, reject) => { timer = setTimeout(() => { interruptLocalGeneration(); reject(new Error('timeout')); }, GENERATION_TIMEOUT_MS); });
-    const raw = await Promise.race([collect(), timeout]);
+    const timeout = new Promise<never>((_, reject) => { timer = setTimeout(() => { interruptLocalGeneration(); reject(new Error('timeout')); }, timeoutMs); });
+    return await Promise.race([collect(), timeout]);
+  } finally {
+    generating = false;
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/**
+ * Second opinion on a free-text move from the on-device model: which of the missing elements are there after all,
+ * each backed by a quote. Returns nothing without a loaded model, for conflict moves, on a timeout or an unusable answer.
+ */
+export async function assessFreeTextWithLocalAi(choice: Choice, stage: number): Promise<{ gap: GapId; quote: string }[]> {
+  if (!localAiReady() || !choice.freeText || !choice.gaps?.length || needsScriptedReply(choice)) return [];
+  try {
+    return parseAssessment(await runLocal(buildAssessmentPrompt(choice, stage), 120, .1, ASSESSMENT_TIMEOUT_MS), choice);
+  } catch {
+    return [];
+  }
+}
+
+export async function generateOpponentReplyWebLLM(config: Config, turns: Turn[], choice: Choice, stage: number): Promise<{ text: string; source: 'webllm' | 'script'; fallback: boolean }> {
+  const anchor = respond(config, stage, choice, outcome(config, [...turns, { ...choice, reply: '' }]).trust);
+  const scripted = { text: anchor, source: 'script' as const, fallback: false };
+  if (!localAiReady() || needsScriptedReply(choice) || validateLocalContext(config, turns, choice, stage)) return scripted;
+  try {
+    const raw = await runLocal(buildLocalPrompt(config, turns, choice, stage), 160, .6, GENERATION_TIMEOUT_MS);
     const text = sanitizeLocalReply(raw, anchor, choice.text, scenarioFor(config).person);
     if (!text) console.debug('[arena] local model reply rejected:', raw);
     return text ? { text, source: 'webllm', fallback: false } : { ...scripted, fallback: true };
   } catch {
     return { ...scripted, fallback: true };
-  } finally {
-    generating = false;
-    if (timer) clearTimeout(timer);
   }
 }
