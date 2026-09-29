@@ -1,6 +1,6 @@
 # Дополнительные материалы
 
-Команда AI BOTS TEAM · «Арена переговоров» · [прототип](https://lotos24.github.io/arenaAI-26/) · [документация](DOCUMENTATION.md) · [презентация PDF](presentation/Arena-AI-BOTS-TEAM.pdf)
+Команда AI BOTS TEAEM · «Арена переговоров» · [прототип](https://lotos24.github.io/arenaAI-26/) · [документация](DOCUMENTATION.md) · [презентация PDF](presentation/Arena-AI-BOTS-TEAM.pdf)
 
 ## Демонстрация за 3–5 минут
 
