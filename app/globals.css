@@ -362,3 +362,7 @@ select{appearance:none;padding-right:46px!important;background-image:linear-grad
 .message.theirs{max-width:86%}
 @media(max-width:700px){.choice-tray{margin-top:12px;padding-top:10px}.choice-tray-label{font-size:10px;margin-bottom:7px}.composer-heading .choices-toggle+.coach-button{margin-left:4px}}
 @media(max-width:1180px){.composer-heading>span:first-child{display:none}.composer-heading strong{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}.composer-heading .short-label[data-short]{font-size:0;line-height:0}.composer-heading .short-label[data-short]::after{content:attr(data-short);font-size:11px;line-height:1.2}}
+/* Legend chapters on short phones: the longer chapter 3 text must leave room for its preview and the controls. */
+@media(max-height:610px) and (max-width:700px){.chapter h1{font-size:25px}.chapter p{margin-top:10px;font-size:13px;line-height:1.45}.chapter-preview{padding-top:8px}}
+/* The mic hint lives in the chat, so on first visit it scrolls with the dialog instead of shrinking it. */
+.messages>.mic-hint{margin:16px 0 4px}

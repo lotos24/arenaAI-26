@@ -1,7 +1,11 @@
 """UI regression: run npm start and chromedriver --port=9515, then python docs/browser-smoke.py."""
-import urllib.request,urllib.error,json,time,base64,os
+import urllib.request,urllib.error,json,time,base64,os,tempfile
 base=os.environ.get('WEBDRIVER_URL','http://127.0.0.1:9515')
 app=os.environ.get('ARENA_URL','http://127.0.0.1:3000')
+snaps=os.environ.get('ARENA_SNAPS',tempfile.gettempdir())
+# Answer options are shuffled per session, so a tactic is picked by its words, not by its position.
+BEST=['Спасибо за возможность обсудить мой рост','Я рассчитываю на ведущую роль','Какие результаты, ответственность и сроки','Предлагаю ведущую роль сейчас','Понимаю риск бюджета','Зафиксируем роль, KPI']
+HOSTILE=['мне придётся уйти','Моя позиция окончательная','меня не касаются','моё последнее предложение','ищете повод отказать','вы согласились со всем']
 def req(path,data=None,method=None):
     request=urllib.request.Request(base+path,data=json.dumps(data).encode() if data is not None else None,headers={'Content-Type':'application/json'},method=method or ('POST' if data is not None else 'GET'))
     try:
@@ -26,6 +30,15 @@ def click_js(selector):
         time.sleep(.1)
     assert clicked,selector
     time.sleep(1.65)
+def choose(phrases):
+    # Waits until the options of the next stage are shown, then clicks the one containing a known phrase.
+    picked=None
+    for _ in range(40):
+        picked=js('const p='+json.dumps(phrases)+';const b=[...document.querySelectorAll(".options button")].find(x=>!x.disabled&&p.some(t=>x.textContent.includes(t)));if(!b)return null;b.click();return b.textContent.slice(0,60)')
+        if picked:break
+        time.sleep(.1)
+    assert picked,('no option with',phrases)
+    time.sleep(1.65)
 def fill(selector,value):
     element=req(p+'/element',{'using':'css selector','value':selector})
     eid=element['element-6066-11e4-a52e-4f735466cecf']
@@ -44,11 +57,11 @@ def fits(selector):
     assert all(x['x']>=-1 and x['y']>=-1 and x['r']<=x['w']+1 and x['b']<=x['h']+1 for x in value),(selector,value)
 def reachable(selector):
     # Answer options live in the scrollable chat: each fits the width, and the last one is fully visible after scrolling to the end.
-    value=js('const m=document.querySelector(".messages");m.scrollTop=m.scrollHeight;const q=m.getBoundingClientRect();const all=[...document.querySelectorAll('+json.dumps(selector)+')].filter(e=>e.getBoundingClientRect().width);if(!all.length)return null;const last=all[all.length-1].getBoundingClientRect();return all.every(e=>{const r=e.getBoundingClientRect();return r.left>=q.left-1&&r.right<=q.right+1})&&last.bottom<=q.bottom+1&&last.top>=q.top-1')
-    assert value,selector
+    value=js('const m=document.querySelector(".messages");m.scrollTop=m.scrollHeight;const q=m.getBoundingClientRect();const all=[...document.querySelectorAll('+json.dumps(selector)+')].filter(e=>e.getBoundingClientRect().width);if(!all.length)return {ok:false,reason:"no options"};const last=all[all.length-1].getBoundingClientRect();const box=r=>[Math.round(r.left),Math.round(r.top),Math.round(r.right),Math.round(r.bottom)];return {ok:all.every(e=>{const r=e.getBoundingClientRect();return r.left>=q.left-1&&r.right<=q.right+1})&&last.bottom<=q.bottom+1&&last.top>=q.top-1,chat:box(q),last:box(last),scroll:[m.scrollTop,m.scrollHeight,m.clientHeight]}')
+    assert value['ok'],(selector,value)
     assert js('return document.documentElement.scrollHeight <= innerHeight+1 && document.documentElement.scrollWidth <= innerWidth+1'),'page overflow'
 def snap(name):
-    open('/tmp/arena-'+name+'.png','wb').write(base64.b64decode(req(p+'/screenshot')))
+    open(os.path.join(snaps,'arena-'+name+'.png'),'wb').write(base64.b64decode(req(p+'/screenshot')))
 try:
     req(p+'/url',{'url':app});time.sleep(1.2)
     has('За каждой позицией — человек.');snap('welcome-desktop')
@@ -69,9 +82,10 @@ try:
         assert js('return document.querySelector(".negotiation-map").scrollHeight>=document.querySelector(".negotiation-map").clientHeight'),('map missing',w,h)
         if w==390:snap('menu-mobile')
     size(1440,900);snap('menu-desktop')
-    assert js('return document.querySelectorAll(".map-level").length')==8
-    assert js('return document.querySelectorAll(".map-level.unlocked").length')==1
-    click('.map-level.unlocked');button('Начать переговоры');has('Напряжённость')
+    # Two Alabuga cases and the first city level are open from the start.
+    assert js('return document.querySelectorAll(".map-level").length')==10
+    assert js('return document.querySelectorAll(".map-level.unlocked").length')==3
+    click('.map-level[data-level="city-career"]');button('Начать переговоры');has('Напряжённость')
     assert js('return !!document.querySelector("[aria-label=\\"Начать голосовой ввод\\"]")')
     assert js('return !!document.querySelector("[aria-label=\\"Озвучить первую реплику\\"]")')
     initial=int(js('return document.querySelector(".negotiation").dataset.tension'))
@@ -81,20 +95,20 @@ try:
         assert float(js('return parseFloat(getComputedStyle(document.querySelector(".message")).fontSize)'))>=12,('small dialogue text',w,h)
         assert js('return document.querySelector(".conversation").scrollHeight <= document.querySelector(".conversation").clientHeight+1'),('conversation clipping',w,h)
     size(390,844);snap('dialog-mobile')
-    js('document.querySelector(".options button:nth-child(2)").click()');time.sleep(.08)
+    js('const p='+json.dumps(HOSTILE)+';[...document.querySelectorAll(".options button")].find(x=>p.some(t=>x.textContent.includes(t))).click()');time.sleep(.08)
     assert js('return !!document.querySelector(".thinking-message")&&!!document.querySelector(".pending-exchange .yours")'),'sent reply must appear before opponent response'
     time.sleep(1)
     assert int(js('return document.querySelector(".negotiation").dataset.tension'))>initial
-    click_js('.options button:nth-child(3)');click_js('.options button:nth-child(3)');has('На грани срыва');assert js('return !!document.querySelector(".tension-high")')
+    choose(HOSTILE);has('На грани срыва');assert js('return !!document.querySelector(".tension-high")')
     size(1440,900);snap('tension-desktop')
-    click_js('.options button:nth-child(3)');time.sleep(2.1)
+    choose(HOSTILE);choose(HOSTILE);time.sleep(2.1)
     collapse_state=js('return {text:document.body.innerText.slice(0,1200),tension:document.querySelector(".negotiation")?.dataset.tension,pending:!!document.querySelector(".thinking-message"),turns:document.querySelectorAll(".exchange:not(.pending-exchange)").length}')
     assert 'Переговоры сорваны.' in collapse_state['text'],collapse_state
     for w,h in [(1366,768),(390,844),(375,667)]:
         size(w,h);fits('.review-tabs, .result-footer, .result-metrics')
     click('.review-tabs button:nth-child(4)');has('Это моё последнее предложение')
     button('Попробовать иначе')
-    for _ in range(6):click_js('.options button:first-child')
+    for _ in range(6):choose(BEST)
     button('Посмотреть разбор');has('Общий язык найден.');size(390,844);snap('results-mobile')
     button('Прогресс');has('Повышение до ведущего специалиста');has('Стажёр переговорщик')
     req(p+'/refresh',{});time.sleep(1);has('Общий язык найден.');button('Прогресс');has('Повышение до ведущего специалиста')
@@ -115,7 +129,7 @@ try:
         for w,h in [(1366,768),(390,844),(375,667),(320,568)]:
             size(w,h);fits('.input-row');reachable('.options button')
             assert js('return document.querySelector(".conversation").scrollHeight<=document.querySelector(".conversation").clientHeight+1'),('career clipping',stage,w,h)
-        click_js('.options button:first-child')
+        choose(BEST)
     button('Посмотреть разбор');has('Общий язык найден.')
     size(390,844)
     button('Настройки');has('On-Device нейросеть')
@@ -139,7 +153,7 @@ try:
     button('Настройки')
     button('Посмотреть');has('За каждой позицией — человек.');button('Пропустить знакомство');has('Настройки арены.')
     size(1279,720)
-    assert js('const a=document.querySelector(".api-card"),f=document.querySelector(".settings-footnote");return a.scrollHeight<=a.clientHeight+1&&a.getBoundingClientRect().bottom<=f.getBoundingClientRect().top+1'),'API card content overlaps settings'
+    assert js('const a=document.querySelector(".local-ai-card"),f=document.querySelector(".settings-footnote");return a.scrollHeight<=a.clientHeight+1&&a.getBoundingClientRect().bottom<=f.getBoundingClientRect().top+1'),'local model card overlaps settings'
     snap('settings-desktop')
     # System reduced motion must disable CSS animation too.
     click('[aria-label="Спокойный режим"]')
@@ -147,5 +161,5 @@ try:
     button('Посмотреть');assert js('return getComputedStyle(document.querySelector(".welcome-core")).animationName')=='none'
     errors=[x for x in req(p+'/log',{'type':'browser'}) if x['level']=='SEVERE' and 'favicon' not in x['message']]
     assert not errors,errors
-    print('PASS: legend, favicon, dark default, animated custom selects, map and ranks, 5 viewport sizes, no page overflow, optimistic chat thinking state, six-stage scenarios, deal collapse at 100% tension, losing/winning paths, XP, persistence, constructor, voice controls off by default, fixed GPT-5.6 Sol, API settings layout, teacher login and report import, replay, reduced motion, clean console')
+    print('PASS: legend, favicon, dark default, animated custom selects, map and ranks, 5 viewport sizes, no page overflow, optimistic chat thinking state, answer options reachable in the chat, six-stage scenarios, deal collapse at 100% tension, losing/winning paths, XP, persistence, constructor, voice controls off by default, on-device WebLLM settings without API keys, local model card layout, teacher login and report import, replay, reduced motion, clean console')
 finally:req(p,method='DELETE')

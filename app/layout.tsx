@@ -11,7 +11,8 @@ export const metadata: Metadata = {
   applicationName: 'Арена переговоров',
   manifest: `${basePath}/manifest.json`,
   appleWebApp: { capable: true, title: 'Арена', statusBarStyle: 'black-translucent' },
-  icons: { apple: `${basePath}/apple-touch-icon.png` },
+  // Declaring icons here replaces the file-based app/icon.svg, so the favicon is listed explicitly.
+  icons: { icon: { url: `${basePath}/icon.svg`, type: 'image/svg+xml' }, apple: `${basePath}/apple-touch-icon.png` },
   other: { 'apple-mobile-web-app-capable': 'yes' },
 };
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) { return <html lang="ru"><body>{children}</body></html>; }
