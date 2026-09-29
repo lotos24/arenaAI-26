@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Config, defaults, evaluateText, outcome, respond, tension, Turn, withInterests } from '../lib/engine';
+import { choices, Config, defaults, evaluateText, outcome, respond, tension, Turn, withInterests } from '../lib/engine';
+import { strengthenMove } from '../lib/methods';
 import { SCENARIO_PRESETS } from '../lib/scenario-library';
 import { buildLocalPrompt, needsScriptedReply, reversesStance, sanitizeLocalReply, sharesMeaning, swapsRoles } from '../lib/web-llm';
 
@@ -155,4 +156,15 @@ test('a model reply that answers the player’s words may keep less of the gist'
   const player = 'Что для вас важнее всего в работе со студентами?';
   assert.ok(sharesMeaning('Для работы со студентами мне важно одно: служебное жильё для наставника.', anchor, player));
   assert.ok(!sharesMeaning('Давайте обсудим цену поставки и график оплаты.', anchor, player));
+});
+
+test('the review strengthens the player’s own phrase instead of replacing it', () => {
+  const lone = evaluateText('Предлагаю цену 5%', 'supplier', 3);
+  const stronger = strengthenMove(lone)!;
+  assert.ok(stronger.text.includes('Предлагаю цену 5%.'), 'the player’s words stay');
+  assert.ok(stronger.additions.some(item => /Взамен/.test(item)), 'the missing exchange is added');
+  assert.deepEqual(stronger.parts.filter(part => !part.added).map(part => part.text), ['Предлагаю цену 5%.']);
+  const risk = strengthenMove(evaluateText('Давайте добавим пилот на квартал', 'supplier', 4))!;
+  assert.match(risk.text, /^Понимаю, что вас беспокоит риск\./, 'acknowledging the risk goes first');
+  assert.equal(strengthenMove(choices('supplier', 3)[0]), null, 'answer options keep the ready-made example');
 });

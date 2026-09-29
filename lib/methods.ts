@@ -1,4 +1,4 @@
-import { choices, Choice, Config, discoveredInterests, finale, interestsFor, outcome, scenarios, sessionStageCount, stages, TechniqueId, tension, Turn } from './engine';
+import { choices, Choice, Config, GapId, discoveredInterests, finale, interestsFor, outcome, scenarios, sessionStageCount, stages, TechniqueId, tension, Turn } from './engine';
 
 /** Negotiation methods behind every move, so players learn to name what they do. */
 export type Technique = { id: TechniqueId; label: string; kind: 'method' | 'risk' };
@@ -149,3 +149,38 @@ export const COACH_HINTS: Array<{ method: string; text: string }> = [
   { method: 'Гарвард: объективные критерии', text: 'Назовите риск собеседника и предложите проверяемый механизм: пилот, коридор, KPI или дату пересмотра.' },
   { method: 'Фиксация договорённости', text: 'Перечислите условия, ответственного и срок, затем проверьте согласие, прежде чем объявлять итог.' },
 ];
+
+/** A fragment in the player's voice for each missing piece; [в скобках] is what the player fills in. */
+const GAP_FRAGMENTS: Record<GapId, { text: string; before?: boolean }> = {
+  acknowledge: { text: 'Понимаю, что для вас это непростая ситуация.', before: true },
+  together: { text: 'Давайте вместе найдём решение, которое устроит обе стороны.' },
+  common: { text: 'Нам обоим важно сохранить сотрудничество.' },
+  positions: { text: 'Как вы видите ситуацию со своей стороны?' },
+  check: { text: 'Правильно ли я понимаю ваши условия?' },
+  boundary: { text: 'Для нас предел — [ваша граница].' },
+  openQuestion: { text: 'Что для вас сейчас важнее всего и почему?' },
+  axes: { text: 'Что сильнее влияет на решение: сроки, объём или ресурсы?' },
+  proposal: { text: 'Предлагаю [конкретный вариант].' },
+  terms: { text: 'Давайте свяжем в одно предложение срок и объём: [условия].' },
+  exchange: { text: 'Взамен мы готовы [ваша встречная уступка].' },
+  objection: { text: 'Понимаю, что вас беспокоит риск.', before: true },
+  mitigation: { text: 'Чтобы его снизить, предлагаю пилот с контрольной точкой.' },
+  contingency: { text: 'Если показатели не будут достигнуты, пересмотрим условия.' },
+  summary: { text: 'Итак, фиксируем: [основные пункты].' },
+  owner: { text: 'Я отправлю протокол до [дата].' },
+  written: { text: 'Подтвердите, пожалуйста, что всё верно.' },
+};
+export type StrengthenedMove = { additions: string[]; text: string; parts: { text: string; added: boolean }[] };
+/**
+ * The player's own free-text move with up to two missing pieces added where they belong,
+ * so the review shows how *their* phrase gets stronger instead of a ready-made answer.
+ */
+export function strengthenMove(turn: Pick<Choice, 'text' | 'gaps' | 'freeText'>): StrengthenedMove | null {
+  if (!turn.freeText || !turn.gaps?.length) return null;
+  const picked = turn.gaps.slice(0, 2).map(gap => GAP_FRAGMENTS[gap]);
+  const own = turn.text.trim().replace(/([^.!?…])$/u, '$1.');
+  const before = picked.filter(item => item.before).map(item => item.text);
+  const after = picked.filter(item => !item.before).map(item => item.text);
+  const parts = [...before.map(text => ({ text, added: true })), { text: own, added: false }, ...after.map(text => ({ text, added: true }))];
+  return { additions: picked.map(item => item.text), text: parts.map(part => part.text).join(' '), parts };
+}

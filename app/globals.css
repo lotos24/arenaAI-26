@@ -366,3 +366,11 @@ select{appearance:none;padding-right:46px!important;background-image:linear-grad
 @media(max-height:610px) and (max-width:700px){.chapter h1{font-size:25px}.chapter p{margin-top:10px;font-size:13px;line-height:1.45}.chapter-preview{padding-top:8px}}
 /* The mic hint lives in the chat, so on first visit it scrolls with the dialog instead of shrinking it. */
 .messages>.mic-hint{margin:16px 0 4px}
+/* Review: the player's own phrase with the missing pieces highlighted. */
+.better-additions{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:6px}
+.better-additions li{display:flex;gap:7px;align-items:flex-start;font-size:13px;line-height:1.5;color:var(--ink)}
+.better-additions svg{flex-shrink:0;margin-top:3px;color:#6f9360}
+.own-better mark{background:#dfeccf;color:inherit;border-radius:4px;padding:0 3px}
+.theme-dark .own-better mark{background:#2c4232;color:#e7eee7}
+.own-better small{display:block;margin-top:10px;font-size:12px;line-height:1.55;color:#8b987c}
+@media(max-width:700px){.better-additions li{font-size:12px}.own-better small{font-size:11px}}
