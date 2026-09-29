@@ -91,10 +91,35 @@ export function buildAssessmentPrompt(choice: Choice, stage: number): LocalMessa
       `Этап переговоров: ${stages[Math.max(0, Math.min(stage, SESSION_STAGE_COUNT - 1))]}.`,
       `Реплика участника: «${clip(choice.text, 500)}»`,
       `Критерии:\n${gaps.map((gap, index) => `${index + 1}. Участник ${GAP_CRITERIA[gap]}.`).join('\n')}`,
-      'Для каждого критерия, который в реплике действительно выполнен, выведи отдельную строку: номер: «точная цитата из реплики». Если ни один критерий не выполнен, выведи одно слово: нет. Не придумывай цитаты и не засчитывай то, чего в реплике нет.',
+      'Для каждого критерия, который в реплике действительно выполнен, выведи отдельную строку из номера критерия и точной цитаты из реплики в кавычках-ёлочках, например: 2: «слова участника». Если ни один критерий не выполнен, выведи одно слово: нет. Не придумывай цитаты и не засчитывай то, чего в реплике нет.',
     ].join('\n\n') },
   ];
 }
+const TERM = /срок|время|дат|объ[её]м|ресурс|цен|стоимост|график|люд|команд|бюджет|качеств|оплат|аренд|мощност|инвестиц|зарплат|kpi|роль|задач/gu;
+const countTerms = (text: string) => new Set(text.match(TERM) ?? []).size;
+/**
+ * The model proposes, a lenient rule confirms: a credited quote must at least look like its criterion
+ * (a question for a question, two parameters for «several parameters»), so a small model cannot credit anything with any quote.
+ */
+const PLAUSIBLE: Record<GapId, (quote: string) => boolean> = {
+  acknowledge: q => /понима|вижу|слышу|знаю|ясно|уважа|непрост|сложн|близк|разделя|ценю|поддерживаю|ваша идея|ваш подход|ваш\S* (?:ситуац|положен|задач|огранич)/u.test(q),
+  together: q => /вместе|совместн|сообща|найд[её]м|обе сторон|обеих|друг другу|партн/u.test(q),
+  common: q => /общ|обоих|обеих|обе сторон|оба|вместе|долгосроч|отношени|сотрудн|выигра|польз/u.test(q),
+  positions: q => /(?:^| )(?:вам|вы|ваш\S*)(?= |$)/u.test(q) && /(?:^| )(?:нам|мы|наш\S*|мне|я)(?= |$)/u.test(q),
+  check: q => /верно|правильно|так ли|уловил|понял|понимаю ли|сверим|одинаково/u.test(q),
+  boundary: q => /не (?:больше|дороже|выше|меньше|ниже|раньше|позже)|предел|максимум|минимум|границ|не можем|не готов|только если|до \d/u.test(q),
+  openQuestion: q => /хочу понять|интересно|расскажите|поделитесь|объясните|почему|зачем|связан|держится|стоит за|что для вас|как вы/u.test(q),
+  axes: q => countTerms(q) >= 2,
+  proposal: q => /предлага|готов|можем|давайте|возьм|сделаем|вариант|берём|берем/u.test(q),
+  terms: q => countTerms(q) >= 2 || (q.match(/\d+/g) ?? []).length >= 2,
+  exchange: q => /взамен|в обмен|за это|со своей стороны|с нашей стороны|обеспечим|гарантируем|дадим|возьм[её]м на себя|а (?:мы|я) /u.test(q),
+  objection: q => /риск|опаса|беспоко|сомнева|страх|боит|волну|пережива/u.test(q),
+  mitigation: q => /пилот|гарант|страхов|контрол|провер|поэтап|сниз|защит|подстрах|компенс/u.test(q),
+  contingency: q => /если|в случае|при условии|при отклонен|пересмотр|по итогам|контрольн|через \S+ (?:месяц|недел|квартал)/u.test(q),
+  summary: q => /итак|итог|договорились|фиксир|резюм|подвед|получается/u.test(q),
+  owner: q => /(?:отправ|подготов|пришл|пришлю|сделаю|возьм|ответствен)/u.test(q) && /(?:до |к |сегодня|завтра|понедел|вторн|сред|четверг|пятниц|недел|\d)/u.test(q),
+  written: q => /письм|протокол|документ|почт|подтверд|согласны/u.test(q),
+};
 const normalizeQuote = (text: string) => text.toLowerCase().replace(/ё/g, 'е').replace(/[«»"“”„.,!?;:—–-]/g, ' ').replace(/\s+/g, ' ').trim();
 /**
  * Reads «номер: «цитата»» lines. A credit counts only when its quote really occurs in the player's words and
@@ -106,12 +131,17 @@ export function parseAssessment(raw: string, choice: Choice): { gap: GapId; quot
   const found: { gap: GapId; quote: string }[] = [];
   const used = new Set<string>();
   for (const line of raw.split(/\n+/)) {
-    const match = line.match(/^\s*(\d+)\s*[:.)\-–—]\s*[«"“„]([^»"”]+)[»"”]/u);
+    // «2: «цитата»», «2. «цитата»» and the literal «2. номер: «цитата»» small models write.
+    const match = line.match(/^\s*(\d+)\s*[:.)\-–—]?[^«"“„\d]{0,20}[«"“„]([^»"”]+)[»"”]/u);
     if (!match) continue;
-    const gap = gaps[Number(match[1]) - 1];
+    const named = gaps[Number(match[1]) - 1];
     const quote = match[2].trim().replace(/[.,;:]+$/u, '');
     const key = normalizeQuote(quote);
-    if (!gap || key.split(' ').length < 2 || !said.includes(key) || used.has(key) || found.some(item => item.gap === gap)) continue;
+    if (!named || key.split(' ').length < 2 || !said.includes(key) || used.has(key)) continue;
+    // Small models mix up the numbers: a real quote goes to the missing criterion it actually fits.
+    const open = gaps.filter(item => !found.some(credit => credit.gap === item));
+    const gap = PLAUSIBLE[named](key) && open.includes(named) ? named : open.find(item => PLAUSIBLE[item](key));
+    if (!gap) continue;
     used.add(key);
     found.push({ gap, quote });
     if (found.length >= AI_CREDIT_LIMIT) break;
@@ -315,7 +345,9 @@ async function runLocal(messages: LocalMessage[], maxTokens: number, temperature
 export async function assessFreeTextWithLocalAi(choice: Choice, stage: number): Promise<{ gap: GapId; quote: string }[]> {
   if (!localAiReady() || !choice.freeText || !choice.gaps?.length || needsScriptedReply(choice)) return [];
   try {
-    return parseAssessment(await runLocal(buildAssessmentPrompt(choice, stage), 120, .1, ASSESSMENT_TIMEOUT_MS), choice);
+    const raw = await runLocal(buildAssessmentPrompt(choice, stage), 120, .1, ASSESSMENT_TIMEOUT_MS);
+    console.debug('[arena] local assessment:', raw);
+    return parseAssessment(raw, choice);
   } catch {
     return [];
   }

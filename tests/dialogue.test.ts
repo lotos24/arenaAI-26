@@ -189,3 +189,19 @@ test('the AI assessor credits only quoted, real elements and stays within limits
   const option = choices('supplier', 3)[1];
   assert.equal(applyAiCredit(option, 3, [{ gap: 'exchange', quote: 'любая цитата' }]), option, 'answer options are never re-scored');
 });
+
+test('the assessor format quirks are read and implausible credits are dropped', () => {
+  const move = evaluateText('Хочу понять, на чём держится ваша позиция по аренде — с чем она связана у вас внутри зоны.', 'supplier', 2);
+  assert.deepEqual(move.gaps, ['openQuestion', 'axes']);
+  // The real answer of Qwen2.5-1.5B: a literal «номер:» and «several parameters» credited for a quote without any.
+  const raw = '1. номер: «Хочу понять, на чём держится ваша позиция по аренде — с чем она связана у вас внутри зоны.»\n2. номер: «с чем она связана у вас внутри зоны.»';
+  assert.deepEqual(parseAssessment(raw, move).map(item => item.gap), ['openQuestion']);
+});
+
+test('a real quote under the wrong number goes to the criterion it fits; the prompt example is not credited', () => {
+  const move = evaluateText('Алина, мне близка ваша идея учить студентов на живых роботах, и мне хочется, чтобы от нашего разговора выиграли и завод, и Политех.', 'career', 0);
+  assert.deepEqual(move.gaps, ['acknowledge', 'together', 'common']);
+  // The real answer of Qwen2.5-1.5B: it copied the prompt example and put the quote under «together».
+  const raw = '1: «слова участника»\n2: «мне хочется, чтобы от нашего разговора выиграли и завод, и Политех»';
+  assert.deepEqual(parseAssessment(raw, move).map(item => item.gap), ['common']);
+});

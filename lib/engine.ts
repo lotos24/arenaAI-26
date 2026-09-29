@@ -427,7 +427,8 @@ export function applyAiCredit(c:Choice,stage:number,confirmed:{gap:GapId;quote:s
  const polite=Boolean(c.cues?.includes('greeting')||c.cues?.includes('empathy'));
  const effects=qualityEffects(points/maximum,polite);
  const batna=c.technique==='batna';
- const credited=credit.map(item=>`${GAP_CRITERIA[item.gap]} («${item.quote}»)`).join('; ');
+ const short=(quote:string)=>quote.length>90?`${quote.slice(0,87).replace(/\s+\S*$/u,'')}…`:quote;
+ const credited=credit.map(item=>`${GAP_CRITERIA[item.gap]} («${short(item.quote)}»)`).join('; ');
  return {...c,points,trust:batna?Math.max(effects.trust,2):effects.trust,tension:batna?Math.min(effects.tension,2):effects.tension,
   gaps:c.gaps.filter(gap=>!credit.some(item=>item.gap===gap)),aiCredit:credit,
   feedback:`${c.feedback} Локальная нейросеть засчитала то, что ключевые слова не распознали: ${credited}.`};
