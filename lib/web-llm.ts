@@ -176,7 +176,17 @@ export function echoesPlayer(reply: string, player: string, anchor = '') {
   const theirs = new Set([...stemsOf(player)].filter(stem => !legit.has(stem)));
   let copied = 0;
   for (const stem of own) if (theirs.has(stem)) copied++;
-  return own.size > 0 && copied / own.size >= .6;
+  if (own.size > 0 && copied / own.size >= .6) return true;
+  // Five of the player's words in a row, not taken from the gist: the model speaks the player's line as its own.
+  const words = (text: string) => text.toLowerCase().replace(/ё/g, 'е').match(/[а-яa-z0-9]+/g) ?? [];
+  const said = words(player);
+  const replyText = ` ${words(reply).join(' ')} `;
+  const gistText = ` ${words(anchor).join(' ')} `;
+  for (let i = 0; i + 5 <= said.length; i++) {
+    const run = ` ${said.slice(i, i + 5).join(' ')} `;
+    if (replyText.includes(run) && !gistText.includes(run)) return true;
+  }
+  return false;
 }
 /**
  * A small model answering freely sometimes speaks for the player: it calls the persona by name

@@ -205,3 +205,11 @@ test('a real quote under the wrong number goes to the criterion it fits; the pro
   const raw = '1: «слова участника»\n2: «мне хочется, чтобы от нашего разговора выиграли и завод, и Политех»';
   assert.deepEqual(parseAssessment(raw, move).map(item => item.gap), ['common']);
 });
+
+test('a model reply that speaks the player’s condition as its own is rejected', () => {
+  const player = 'Правильно ли я понимаю, что служебное жильё в Елабуге для вас важно, а мне нужно сохранить работу на заводе не меньше трёх дней в неделю?';
+  const anchor = 'Да, в целом вы поняли верно. Служебное жильё в Елабуге мы можем предоставить: для наставников с производства это часть пакета.';
+  // The real reply of Qwen2.5-1.5B during the demo run.
+  assert.equal(sanitizeLocalReply('Хорошо. Да, вы правы: служебное жильё в Елабуге для нас важно, а также нужно сохранить работу на заводе не менее трёх дней в неделю.', anchor, player, 'Алина Хасанова'), null);
+  assert.ok(sanitizeLocalReply('Да, вы поняли верно. Служебное жильё в Елабуге мы можем предоставить: для наставников с производства это часть пакета.', anchor, player, 'Алина Хасанова'), 'words shared with the gist are fine');
+});
