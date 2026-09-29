@@ -64,6 +64,8 @@ def snap(name):
     open(os.path.join(snaps,'arena-'+name+'.png'),'wb').write(base64.b64decode(req(p+'/screenshot')))
 try:
     req(p+'/url',{'url':app});time.sleep(1.2)
+    # Automatic tours would cover the page for the scripted clicks; the tour itself is checked with its button below.
+    js("['home','session','results'].forEach(id=>localStorage.setItem('arena-tour-'+id,'done'))")
     has('За каждой позицией — человек.');snap('welcome-desktop')
     for w,h in [(1440,900),(1366,768),(390,844),(375,667),(320,568)]:
         size(w,h);fits('.welcome-controls, .welcome-top, .chapter')
@@ -75,6 +77,11 @@ try:
         assert js('return document.querySelector(".chapter").scrollHeight<=document.querySelector(".chapter").clientHeight+1'),'legend content clipping'
         size(390,844)
     has('В настройках доступны');button('Войти в арену');has('Карта переговоров')
+    assert js('return document.querySelectorAll(".first-steps .first-step").length')==3,'first steps for a new player'
+    click('.tour-launch');time.sleep(1)
+    assert js('return !!document.querySelector(".tour .tour-card")'),'guided tour opens'
+    js("window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}))");time.sleep(.5)
+    assert js('return !document.querySelector(".tour")'),'Escape closes the tour'
     assert js('return document.querySelector(".app-root").classList.contains("theme-dark")'),'dark theme must be default'
     assert js("return !!document.querySelector('link[rel~=\"icon\"]')"),'favicon missing'
     for w,h in [(1440,900),(1366,768),(390,844),(375,667),(320,568)]:
@@ -163,5 +170,5 @@ try:
     button('Посмотреть');assert js('return getComputedStyle(document.querySelector(".welcome-core")).animationName')=='none'
     errors=[x for x in req(p+'/log',{'type':'browser'}) if x['level']=='SEVERE' and 'favicon' not in x['message']]
     assert not errors,errors
-    print('PASS: legend, favicon, dark default, animated custom selects, map and ranks, 5 viewport sizes, no page overflow, optimistic chat thinking state, answer options reachable in the chat, six-stage scenarios, deal collapse at 100% tension, losing/winning paths, XP, persistence, constructor, voice controls off by default, on-device WebLLM settings without API keys, local model card layout, teacher login and report import, replay, reduced motion, clean console')
+    print('PASS: legend, favicon, dark default, animated custom selects, map and ranks, 5 viewport sizes, no page overflow, optimistic chat thinking state, answer options reachable in the chat, six-stage scenarios, deal collapse at 100% tension, losing/winning paths, XP, persistence, constructor, voice controls off by default, on-device WebLLM settings without API keys, local model card layout, teacher login and report import, replay, reduced motion, first steps and guided tour, clean console')
 finally:req(p,method='DELETE')
