@@ -54,9 +54,19 @@ test('a figure the player names is answered, the opponent’s own figure is not'
 test('a weak free-text move gets the missing piece in the opponent’s voice', () => {
   const lone = evaluateText('Предлагаю цену 5%.', 'supplier', 3);
   assert.ok(lone.gaps?.includes('exchange'));
-  assert.match(respond(defaults.supplier, 3, lone, 60), /взамен/);
+  assert.match(respond(defaults.supplier, 3, lone, 60), /взамен|со своей стороны|с вашей стороны/);
   const closing = evaluateText('Спасибо!', 'career', 5);
   assert.match(respond(defaults.career, 5, closing, 60), /И вам спасибо\. .*договорились/);
+});
+
+test('the opponent varies its phrasing and its tone, with the persona’s gender filled in', () => {
+  const lines = ['Нам бы хотелось обсудить условия', 'Давайте поговорим о наших планах', 'Хотим понять перспективы работы', 'Мы пришли обсудить сотрудничество', 'Есть вопросы по контракту и планам', 'Надо обсудить дальнейшие шаги'];
+  const replies = (config: Config) => lines.map(text => respond(config, 1, evaluateText(text, config.domain, 1), 60));
+  assert.ok(new Set(replies(defaults.supplier)).size >= 4, 'several phrasings for the same stage');
+  const tough = replies({ ...defaults.supplier, tone: 'Жёсткий' }).join(' ');
+  assert.match(tough, /Скажу прямо/);
+  for (const config of [preset('alabuga-polytech'), { ...defaults.team, tone: 'Жёсткий' as const }, { ...defaults.career, tone: 'Дружелюбный' as const }])
+    for (let stage = 0; stage < 6; stage++) for (const text of lines) assert.doesNotMatch(respond(config, stage, evaluateText(text, config.domain, stage), 60), /[{}]/);
 });
 
 test('check questions and blanket agreement get their own answers', () => {
